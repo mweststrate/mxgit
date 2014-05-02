@@ -1,10 +1,10 @@
-var fs = require('fs.extra'); //TODO: add node dependency fs.extra
-var execSync = require("exec-sync"); //TODO: add node dependency
-var process = require('process');
+var fs = require('fs-extra'); 
 var child_process = require('child_process');
 
-var mprName = findMprFile();
 var MENDIX_CACHE = '.mendix-cache/';
+var BASE_DATA = MENDIX_CACHE + 'base_data';
+
+var mprName = findMprFile();
 
 function main() {
 	if (!fs.existsSync(".git")) {
@@ -12,7 +12,7 @@ function main() {
 		process.exit(1);
 	}
 
-	console.log("mxgit using mpr " + mprName);
+	console.log("mxgit: using mpr " + mprName);
 
 	//create cache dir if it doesn't exist
 	if (!fs.existsSync(MENDIX_CACHE))
@@ -20,9 +20,11 @@ function main() {
 
 	//TODO: kill svn dir and replace if it does exist
 
+	//TODO update REPOSITORY$root table
+
 	//TODO: setup gitignore if it doesn't exist
 
-	//TODO: setup sprintr id if it doensn't exist
+	//TODO: setup sprintr id if it doensn't exist, store in NODES or ACTUAL_NODE table...
 
 	updateBase();
 }
@@ -38,11 +40,18 @@ function findMprFile() {
 }
 
 function updateBase() {
-	var latestHash = findLatestMprHash();
-	if (latestHash == null) {
-		fs.copy(mprName, MENDIX_CACHE + 'base_data', afterCopyBase);
-	else
-		storeBlobToFile(latestHash, MENDIX_CACHE + 'base_data', afterCopyBase);
+	findLatestMprHash(function(latestHash) {
+		console.log("mxgit: setting base to " + latestHash);
+		if (fs.existsSync(BASE_DATA))
+			fs.removeSync(BASE_DATA);
+		console.log("removed")
+		if (latestHash == null) {
+			fs.copy(mprName, BASE_DATA, afterCopyBase);
+			console.log("copied");
+		}
+		else
+			storeBlobToFile(latestHash, BASE_DATA, afterCopyBase);
+	});
 }
 
 function afterCopyBase(err) {
@@ -51,6 +60,8 @@ function afterCopyBase(err) {
 		console.error(err);
 		process.exit(3);
 	}
+
+	//fix wc.db database; update NODES table, set local_relpath to mprname where local_relpath = GitBasedTeamserverRepo.mpr
 	//TODO: check if base file has changed, if so, warn
 		//store rev file (2) if not available in base_rev
 	//extract and store version of baseblob file in base_ver
@@ -60,13 +71,16 @@ function afterCopyBase(err) {
 
 }
 
-function findLatestMprHash() {
-	var treeFiles = execGitCommand("ls-tree HEAD");
-	for(var i = 0; i < treeFiles.length; i++)
-		if (treeFiles[i].indexOf(mprName) != -1)
-			return treeFiles[i].split(/\s/)[2];
+function findLatestMprHash(callback) {
+	execGitCommand("ls-tree HEAD", function(treeFiles) {
+		for(var i = 0; i < treeFiles.length; i++)
+			if (treeFiles[i].indexOf(mprName) != -1) {
+				callback(treeFiles[i].split(/\s+/)[2]);
+				return;
+			}
 
-	return null;
+		callback(null);
+	});
 }
 
 //todo: switch to non-real projectid & ts dir
@@ -89,18 +103,27 @@ function commit(message) {
 
 }
 
-function execGitCommand(command) {
-	return execSync("git " + command).split(/\r?\n/);
+function execGitCommand(command, callback) {
+	child_process.exec("git " + command, function(error, stdout, stderr){
+		if (error) {
+			console.error("Failed to execute: git " + command);
+			console.error(error);
+			process.exit(error.code);
+		}
+		callback(stdout.split(/\r?\n/));
+	});
 }
 
 function storeBlobToFile(hash, filename, callback) {
 	out = fs.openSync(filename, 'w');
 	var child = child_process.spawn("git", ["cat-file", "-p", hash], {
-		stdio: [ 'pipe', out, 'pipe']
+		stdio: ['pipe', out, 'pipe']
 	});
-	out.close();
 
-	callback(); //todo: not async yet so not needed?
+	child.on('close', function() {
+		console.log("process done");
+		callback();
+	});
 };
 
 if ((typeof (module) !== "undefined" && !module.parent))
