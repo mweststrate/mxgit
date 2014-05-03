@@ -3,37 +3,78 @@ var child_process = require('child_process');
 
 var MENDIX_CACHE = '.mendix-cache/';
 var BASE_DATA = MENDIX_CACHE + 'base_data';
-var BOGUS_REPO = "https://thisRepoIsManagedByGitDoNotUseSVN.please";
+var BOGUS_REPO = "https://teamserver.sprintr.com/this_is_not_a_svn_repo_use_git/trunk";
 
 var mprName = findMprFile();
 
 function main() {
-	if (!fs.existsSync(".git")) {
-		console.error("Please run mxgit from a git directory");
-		process.exit(1);
-	}
-
-	if (fs.existsSync(".svn") && getSVNRepUrl() != BOGUS_REPO) {
-		console.error("This repository is currently managed by SVN / Mendix Teamserver. Please remove the current .svn directory before managing the repo with (mx)git");
-		process.exit(5);
-
-	}
 
 	console.log("mxgit: using mpr " + mprName);
+	seq([
 
+		async(checkGitDir),
+		checkSvnDir,
+		initializeSvnDir,
+		async(createCacheDir),
+	//TODO: setup gitignore if it doesn't exist
+	//TODO: setup sprintr id if it doensn't exist, store in NODES or ACTUAL_NODE table...
+		updateBase
+
+	//fix wc.db database; update NODES table, set local_relpath to mprname where local_relpath = GitBasedTeamserverRepo.mpr
+	//TODO: check if base file has changed, if so, warn
+		//store rev file (2) if not available in base_rev
+	//extract and store version of baseblob file in base_ver
+
+	//detect tree conflict?
+	//find marker?
+
+	], function(err) {
+		if (err) {
+			console.error(err);
+			process.exit(1);
+		}
+	});
+
+}
+
+function createCacheDir() {
 	//create cache dir if it doesn't exist
 	if (!fs.existsSync(MENDIX_CACHE))
-		fs.mkdir(MENDIX_CACHE);
+		fs.mkdirsSync(MENDIX_CACHE);
+}
 
-	//TODO: kill svn dir and replace if it does exist
+function checkGitDir() {
+	if (!fs.existsSync(".git")) {
+		console.error("Please run mxgit from a git directory");
+		process.exit(7);
+	}
+}
 
-	//TODO update REPOSITORY$root table
+function checkSvnDir(callback) {
+	if (fs.existsSync(".svn")) {
+		execSvnQuery("select root from REPOSITORY", function(results) {
+			if (results[0].trim() == BOGUS_REPO)
+				callback();
+			else {
+				console.error("This repository is currently managed by SVN / Mendix Teamserver. Please remove the current .svn directory before managing the repo with (mx)git. Repo: " + results[0]);
+				process.exit(8);
+			}
+		});
+	}
+	else 
+		callback();
+}
 
-	//TODO: setup gitignore if it doesn't exist
-
-	//TODO: setup sprintr id if it doensn't exist, store in NODES or ACTUAL_NODE table...
-
-	updateBase();
+function initializeSvnDir(callback) {
+	if (!fs.existsSync(".svn")) {
+		fs.copySync(__dirname + "/dummysvn/.svn", process.cwd() + "/.svn");
+		execSvnQuery(
+			"update NODES set local_relpath = '" + mprName + "' where local_relpath = 'GitBasedTeamserverRepo.mpr'",
+			callback
+		);
+	}
+	else
+		callback();
 }
 
 function findMprFile() {
@@ -46,36 +87,18 @@ function findMprFile() {
 	process.exit(2);
 }
 
-function updateBase() {
+function updateBase(callback) {
 	findLatestMprHash(function(latestHash) {
 		console.log("mxgit: setting base to " + latestHash);
 		if (fs.existsSync(BASE_DATA))
 			fs.removeSync(BASE_DATA);
-		console.log("removed")
 		if (latestHash == null) {
-			fs.copy(mprName, BASE_DATA, afterCopyBase);
+			fs.copy(mprName, BASE_DATA, callback);
 			console.log("copied");
 		}
 		else
-			storeBlobToFile(latestHash, BASE_DATA, afterCopyBase);
+			storeBlobToFile(latestHash, BASE_DATA, callback);
 	});
-}
-
-function afterCopyBase(err) {
-	if (err) {
-		console.error("Error while updating base file");
-		console.error(err);
-		process.exit(3);
-	}
-
-	//fix wc.db database; update NODES table, set local_relpath to mprname where local_relpath = GitBasedTeamserverRepo.mpr
-	//TODO: check if base file has changed, if so, warn
-		//store rev file (2) if not available in base_rev
-	//extract and store version of baseblob file in base_ver
-
-	//detect tree conflict?
-	//find marker?
-
 }
 
 function findLatestMprHash(callback) {
@@ -98,7 +121,7 @@ function findLatestMprHash(callback) {
 //todo: forward any git commands?
 
 
-function commit(message) {
+function resolve() {
 	var mprName = findMprName();
 	
 	//check marker for three conflict?
@@ -110,8 +133,16 @@ function commit(message) {
 
 }
 
+function execSvnQuery(query, callback) {
+	execCommand(__dirname + "/sqlite3 .svn/wc.db \"" + query + "\"", callback); //TODO: fix escaping
+}
+
 function execGitCommand(command, callback) {
-	child_process.exec("git " + command, function(error, stdout, stderr){
+	execCommand("git " + command, callback);
+}
+
+function execCommand(command, callback) {
+	child_process.exec(command, function(error, stdout, stderr){
 		if (error) {
 			console.error("Failed to execute: git " + command);
 			console.error(error);
@@ -128,7 +159,7 @@ function storeBlobToFile(hash, filename, callback) {
 	});
 
 	child.on('close', function() {
-		console.log("process done");
+		console.log("stored " + hash + " -> " + filename);
 		callback();
 	});
 };
