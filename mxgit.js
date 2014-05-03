@@ -3,6 +3,7 @@ var child_process = require('child_process');
 
 var MENDIX_CACHE = '.mendix-cache/';
 var BASE_DATA = MENDIX_CACHE + 'base_data';
+var BOGUS_REPO = "https://thisRepoIsManagedByGitDoNotUseSVN.please";
 
 var mprName = findMprFile();
 
@@ -10,6 +11,12 @@ function main() {
 	if (!fs.existsSync(".git")) {
 		console.error("Please run mxgit from a git directory");
 		process.exit(1);
+	}
+
+	if (fs.existsSync(".svn") && getSVNRepUrl() != BOGUS_REPO) {
+		console.error("This repository is currently managed by SVN / Mendix Teamserver. Please remove the current .svn directory before managing the repo with (mx)git");
+		process.exit(5);
+
 	}
 
 	console.log("mxgit: using mpr " + mprName);
@@ -125,6 +132,42 @@ function storeBlobToFile(hash, filename, callback) {
 		callback();
 	});
 };
+
+function seq(funcs /* [func(callback(err, res), prevresult)] */, callback /*optional func(err, res)) */) {
+
+	function next(f, prevResult) {
+		if (f == null) {
+			if (callback)
+				callback(null, prevResult);
+		}
+		else {
+			//F needs try catch?
+			f(function(err, result) {
+				if (err) {
+					if (callback)
+						callback(err, null)
+					else 
+						throw err;
+				}
+				else 
+					next(funcs.shift(), result);
+			}, prevResult);
+		}
+	}
+
+	next(funcs.shift(), null);
+}
+
+function async(func) {
+	return function(callback, prevResult) {
+		try {
+			callback(null, func(prevResult));
+		}
+		catch(e) {
+			callback(e, null);
+		}
+	}
+}
 
 if ((typeof (module) !== "undefined" && !module.parent))
 	main();
