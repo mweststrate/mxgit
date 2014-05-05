@@ -1,68 +1,126 @@
+/**
+	MXGIT - utility to manage Mendix projects with git
+	https://github.com/mweststrate/mxgit
+	
+	Author: Michel Weststrate <mweststrate@gmail.com>
+	© 2014, MIT Licensed
+*/
+
 var fs = require('fs-extra');
 var child_process = require('child_process');
 
 var MENDIX_CACHE = '.mendix-cache/';
 var BASE_DATA = MENDIX_CACHE + 'base_data';
 var BASE_REV = MENDIX_CACHE + 'base_rev';
+var BASE_REV_GIT = MENDIX_CACHE + 'base_rev_git';
 var BASE_VER = MENDIX_CACHE + 'base_ver';
 
 var BOGUS_REPO = "https://teamserver.sprintr.com/this_is_not_a_svn_repo_use_git/trunk";
 var MERGE_MARKER = "modeler-merge-marker;"
 
 var mprName = findMprFile();
+var requiresModelerReload = false;
+var ignoreMprLock = false;
+
+//todo: register git hooks
+//pre commit: check merge marker, check lock. 
+//http://stackoverflow.com/a/4185449
+//post commit, checkout, merge: do the normal thing (but do not install hooks, do not abort on lock)
+//
+//todo reset:remove .svn .mendix-cache, hooks
+//todo: info / debug statements
+//todo: test on linux
+//todo: test merge stuff
+
+var params = {
+	install : false,
+	reset : false,
+	setprojectid : false,
+	precommit : false,
+	postupdate : false,
+	v : false,
+	help : false
+};
 
 function main() {
-
 	console.log("mxgit: using mpr " + mprName);
-	seq([
 
+	seq([
 		async(checkGitDir),
 		checkSvnDir,
-		async(checkMprLock),
-		async(checkMergeMarker),
-		initializeSvnDir,
+		initializeSvnDir, 
 		async(createCacheDir),
-
-
-//SVN conflict: conflict_old in ACTUAL_NODE: mpr.merge-left.r# (BASE), conflict_new: mpr.merge-right.r# (THEIRS)
-//modeler-merge-marker appears as soon as the file is merged by the modeler, but still has conflicts. Disappears as soon as last conflict is resolved in the modeler.
-
-	//TODO: setup gitignore if it doesn't exist (modeler-merge-marker, *.lock, *.svn, *.mendix-cache..., )
-	//TODO: setup sprintr id if it doensn't exist, store in NODES or ACTUAL_NODE table...
-
-	//fix wc.db database; update NODES table, set local_relpath to mprname where local_relpath = GitBasedTeamserverRepo.mpr
-	//TODO: check if base file has changed, if so, warn
-		//store rev file (2) if not available in base_rev
-	//extract and store version of baseblob file in base_ver
-
-	//detect tree conflict?
-	//find marker?
-	//
-	////todo: switch to non-real projectid & ts dir
-//todo: initiate all the default git ignore stuff
-//todo: delete original .svn dir
-//todo: ask and store sprintr project id
-//todo: check if hash of base hash changed, if so: say reload in modeler
-//todo: forward any git commands?
-//todo: register git hooks
-//
-		updateBase,
-		processGitConflict
-
+		interpretParams		
 	], function(err) {
 		if (err) {
 			console.log("mxgit: failed");
 			console.error(err);
 			process.exit(1);
 		}
-		else
+		else {
 			console.log("mxgit: done");
+			if (requiresModelerReload)
+				console.log("\n>>> PLEASE CLOSE AND RE-OPEN THE MODEL IN THE MODELER <<<\n")
+		}
 	});
+}
 
+function interpretParams(callback) {
+	if (params.help) {
+		printHelp(); 
+		callback();
+	}
+	else if (params.reset) {
+		reset(callback);
+	}
+	else if (params.setprojectid) {
+		updateSprintrProjectId(callback);
+	} 
+	else if (params.install) {
+		seq([
+			initializeGitIgnore, 
+			installGitHooks
+		], callback);
+	}
+	else if (params.precommit) {
+		checkMprLock();
+		checkMergeMarker();
+		callback();
+	}
+	else if (params.postupdate) {
+		ignoreMprLock = true;
+		updateStatus(callback);
+	}
+	else {
+		updateStatus(callback);
+	}
+}
+
+function printHelp() {
+	//TODO:
+}
+
+function installGitHooks(callback) {
+	//TODO:	
+}
+
+function reset(callback) {
+	
+}
+
+function updateStatus(callback) {
+	seq([
+		async(checkMprLock),
+		async(checkMergeMarker),
+		initializeGitIgnore,
+		updateBase,
+		when(hasGitConflict, writeConflictData)
+	], callback);
 }
 
 function createCacheDir() {
 	console.log("mxgit: create Mendix cache dir");
+	/* cache dir is used internally by the modeler to store version control meta data */
 	if (!fs.existsSync(MENDIX_CACHE))
 		fs.mkdirsSync(MENDIX_CACHE);
 }
@@ -75,16 +133,61 @@ function checkGitDir() {
 	}
 }
 
+function initializeGitIgnore(callback) {
+
+	var current = [];
+	var changed = false;
+	if (fs.existsSync(".gitignore"))
+		current = fs.readFileSync(".gitignore").split(/\r?\n/);
+
+	var needed = [
+		"/.svn",
+		"/modeler-merge-marker",
+		"/.mendix-cache",
+		"/*.mpr.lock",
+		"/*.mpr.bak",
+		"/*.mpr.left*",
+		"/*.mpr.right*",
+		"/.settings",
+		"/deployment",
+		"/releases",
+		"proxies",
+		"/*.launch",
+		"/.classpath",
+		"/.project",
+	];
+
+	for(var i = 0; i < needed.length; i++) {
+		if (-1 == current.indexOf(needed[i])) {
+			changed = true;
+			current.push(needed[i]);
+		}
+	}
+
+	if (changed)
+		fs.writeFileSync(".gitignore", current.join("\n"));
+
+	callback();
+}
+
 function checkMprLock() {
 	console.log("mxgit: check mpr lock");
+	/* a lock file exists as long as the mpr is opened in a modeler (or if the modeler didn't exit cleanly */
 	if (fs.existsSync(mprName + ".lock")) {
-		console.error("The file '" + mprName + "' is currently being edited in the Mendix Business Modeler. Please close the project (or remove the lock file)");
-		process.exit(9);
+		if (ignoreMprLock) {
+			console.warn("The file '" + mprName + "' is currently being edited in the Mendix Business Modeler.");
+			requiresModelerReload = true;
+		}
+		else {
+			console.error("The file '" + mprName + "' is currently being edited in the Mendix Business Modeler. Please close the project (or remove the lock file)");
+			process.exit(9);
+		}
 	}
 }
 
 function checkMergeMarker() {
 	console.log("mxgit: check merge marker");
+	/* merge marker exists if as soon as the modeler has picked up a merge conflict, and created a new mpr from that. It disappears as soon as the model has no conflicts anymore, to indicate that the conflict has been resolved (which should be communicated to git by using a git add command) */
 	if (fs.existsSync(MERGE_MARKER)) {
 		console.error("The file '" + mprName + "' is currently being merged by the Mendix Business Modeler. Please resolve any model conflicts first.");
 		process.exit(10);
@@ -93,6 +196,7 @@ function checkMergeMarker() {
 
 function checkSvnDir(callback) {
 	console.log("mxgit: check svn repository");
+	/* svn dir shouldn't exists, or it should be our dummy repository */
 	if (fs.existsSync(".svn")) {
 		execSvnQuery("select root from REPOSITORY", function(results) {
 			if (results[0].trim() == BOGUS_REPO)
@@ -110,16 +214,24 @@ function checkSvnDir(callback) {
 function initializeSvnDir(callback) {
 	if (!fs.existsSync(".svn")) {
 		console.log("mxgit: initialize dummy svn repository");
+		/* the dummy repository is there to trick the modeler into thinking this project is properly versioned. We need to alter the actual db though to use the correct name of the mpr file, which might differ per project */
 		fs.copySync(__dirname + "/dummysvn/.svn", process.cwd() + "/.svn");
 		execSvnQuery(
 			"update NODES set local_relpath = '" + mprName + "' where local_relpath = 'GitBasedTeamserverRepo.mpr'",
 			function() {
+					////todo: switch to non-real projectid & ts dir
+
 				callback();
 			}
 		);
 	}
 	else
 		callback();
+}
+
+function updateSprintrProjectId(callback) {
+	//TODO: setup sprintr id if it doensn't exist and the flag is provided, store in NODES or ACTUAL_NODE table...
+	callback();
 }
 
 function findMprFile() {
@@ -148,15 +260,23 @@ function updateBase(callback) {
 			fs.writeFileSync(BASE_VER, version);
 			fs.writeFileSync(BASE_REV, '2');
 
-			if (fs.existsSync(BASE_DATA))
-				fs.removeSync(BASE_DATA);
+			if(latestHash != null && fs.existsSync(BASE_REV_GIT) && latestHash == fs.readFileSync(BASE_REV_GIT)) {
+				callback();
+			} 
+			else {
+				requiresModelerReload = true;
+				fs.writeFileSync(BASE_REV_GIT, latestHash);
 
-			if (latestHash == null) {
-				fs.copy(mprName, BASE_DATA, callback);
-				console.log("copied");
+				if (fs.existsSync(BASE_DATA))
+					fs.removeSync(BASE_DATA);
+
+				if (latestHash == null) {
+					fs.copy(mprName, BASE_DATA, callback);
+					console.log("copied");
+				}
+				else
+					storeBlobToFile(latestHash, BASE_DATA, callback);
 			}
-			else
-				storeBlobToFile(latestHash, BASE_DATA, callback);
 		});
 	});
 }
@@ -173,24 +293,21 @@ function findLatestMprHash(callback) {
 	});
 }
 
-function processGitConflict(callback) {
+function hasGitConflict(callback) {
 	console.log("mxgit: detecting conflict status");
 	execGitCommand("diff --name-only --diff-filter=U", function(unmergedFiles) {
-		var hasConflict = false;
-
-		for(var i = 0; i < unmergedFiles.length; i++)
-			if (unmergedFiles[i] == mprName)
-				hasConflict = true;
-
-		if (hasConflict)
-			writeConflictData(callback);
-		else
-			callback();
+		callback(null, unmergedFiles.indexOf(mprName) != -1)
 	});
 }
 
 function writeConflictData(callback) {
 	console.log("mxgit: conflict detected, updating SVN repository")
+	requiresModelerReload = true;
+
+	/* A SVN conflict is stored as follows: 
+	conflict_old column in ACTUAL_NODE table: mpr.merge-left.r# (BASE), conflict_new column: mpr.merge-right.r# (THEIRS)
+	modeler-merge-marker appears as soon as the file is merged by the modeler, but still has conflicts. Disappears as soon as last conflict is resolved in the modeler. */
+
 	execGitCommand("ls-files -u " + mprName, function(mergestatus) {
 		if (mergestatus.length < 3)
 			callback("mxgit: cannot handle the current conflict, please use an external tool");
@@ -236,11 +353,18 @@ if ((typeof (module) !== "undefined" && !module.parent))
  */
 
 function execSvnQuery(query, callback) {
-	execCommand(__dirname + "/sqlite3 .svn/wc.db \"" + query + "\"", callback); //TODO: fix escaping
+	execSqliteQuery(".svn/wc.db", query, callback);
 }
 
 function execMprQuery(query, callback) {
-	execCommand(__dirname + "/sqlite3 " + mprName + " \"" + query + "\"", callback); //TODO: fix escaping
+	execSqliteQuery(mprName, query, callback);
+}
+
+function execSqliteQuery(file, query, callback) {
+	var sqlite = process.platform == 'win32' ? __dirname + "/sqlite3" : "sqlite3";
+	var query = query.replace(/[\\\"]/g, function(r) { return "\\" + r; });
+
+	execCommand([sqlite, file, "\"" + query + "\""].join(" "), callback);
 }
 
 function execGitCommand(command, callback) {
@@ -271,7 +395,7 @@ function execCommand(command, callback) {
 
 
 function seq(funcs /* [func(callback(err, res), prevresult)] */, callback /*optional func(err, res)) */) {
-
+	//TODO: rename to sequence, do not use prevResult
 	function next(f, prevResult) {
 		if (f == null) {
 			if (callback)
@@ -295,6 +419,30 @@ function seq(funcs /* [func(callback(err, res), prevresult)] */, callback /*opti
 	next(funcs.shift(), null);
 }
 
+function when(condfunc, whenfunc /*or array*/, elsefunc /*optional, or array*/) {
+	function wrapSequence(func) {
+		if (Array.isArray(func)) {
+			return curry(seq, func); //how convenient
+		}
+		else
+			return func;
+	}
+
+	return function(callback) {
+		confunc(function(conditionResult) {
+			if (conditionResult)
+				wrapSequence(whenfunc)(callback);
+			else {
+				if (elsefunc)
+					wrapSequence(elsefunc)(callback);
+				else
+					callback();
+			}
+		});
+	}
+}
+
+//todo: rename to makeAsync
 function async(func) {
 	return function(callback, prevResult) {
 		try {
@@ -306,13 +454,22 @@ function async(func) {
 	}
 }
 
+function identity(value) {
+	return function(callback) {
+		callback(null, value);
+	}
+}
+
+//todo: rename to partial
 function curry(func/*, args*/) {
 	var cargs = [];
-	for(var i = 0; i < arguments.length -1; i++)
+	var scope = this;
+
+	for(var i = 0; i < arguments.length -1; i++) //TODO: use concat + splice!
 		cargs[i] = arguments[i + 1];
 
 	return function() {
 		var args = [].concat(cargs).concat(arguments);
-		func.apply(null, args);
+		return func.apply(scope, args);
 	}
 }
