@@ -9,12 +9,11 @@
 
 //todo: info / debug statements
 //todo: test on linux
-//todo: test merge stuff
 //todo: run npm publish
 
 //V1.1:
 //support in-modeler update so that it is less often required to reopen the repo
-
+//see other known issues. 
 
 /* dependencies */
 var fs = require('fs-extra'); //https://github.com/jprichardson/node-fs-extra
@@ -29,7 +28,7 @@ var BASE_VER = MENDIX_CACHE + 'base_ver';
 var FILE_OPTS = { encoding : 'utf-8' };
 
 var BOGUS_REPO = "https://teamserver.sprintr.com/this_is_not_a_svn_repo_use_git/trunk";
-var MERGE_MARKER = "modeler-merge-marker;"
+var MERGE_MARKER = "modeler-merge-marker";
 
 /* state */
 var mprName = findMprFile();
@@ -94,8 +93,8 @@ function interpretParams(params, callback) {
 		], callback);
 	}
 	else if (params.precommit) {
-		checkMprLock();
 		checkMergeMarker();
+		checkMprLock();
 		callback();
 	}
 	else if (params.postupdate) {
@@ -113,8 +112,9 @@ function installGitHooks(callback) {
 		if (fs.existsSync(filename))
 			console.warn("The git hook '" + filename + "' already exists! Skipping.");
 		else {
-			fs.writeFileSync(filename, "#!/bin/sh\nexec mxgit " + command, FILE_OPTS);
-			fs.chmodSync(filename, "+x") ;
+			fs.writeFileSync(filename, "#!/bin/sh\necho 'git -> mxgit: running hook " + name + "'\nexec mxgit " + command, FILE_OPTS);
+			if (process.platform != 'win32')
+				fs.chmodSync(filename, "+x") ;
 		}
 	}
 
@@ -152,11 +152,15 @@ function reset(callback) {
 
 function updateStatus(callback) {
 	seq([
-		async(checkMprLock),
 		async(checkMergeMarker),
+		async(checkMprLock),
 		initializeGitIgnore,
 		updateBase,
-		when(hasGitConflict, writeConflictData)
+		when(hasGitConflict, writeConflictData),
+		function(callback) {
+			console.log("status updated");
+			callback();
+		}
 	], callback);
 }
 
@@ -240,7 +244,8 @@ function checkSvnDir(callback) {
 	console.log("mxgit: check svn repository");
 	/* svn dir shouldn't exists, or it should be our dummy repository */
 	if (fs.existsSync(".svn")) {
-		execSvnQuery("select root from REPOSITORY", function(results) {
+		execSvnQuery("select root from REPOSITORY", function(err, results) {
+			assert(!err);
 			if (results[0].trim() == BOGUS_REPO)
 				callback();
 			else {
@@ -276,12 +281,12 @@ function updateSprintrProjectId(projectid, callback) {
 	}
 
 	var needle = "mx:sprintr-project-id 14 dummyprojectid";
-	var replacement = projectid.length + " " + projectid;
+	var replacement = "mx:sprintr-project-id " + projectid.length + " " + projectid;
 	//TODO: Note: this doesn't update the project id once it is set. Requires --reset first. 
-	execSvnQuery("update NODES set properties = replace(properties, '" + needle + "', '" + replacement + "') where local_relpath = '' and kind = 'dir'", function(response) {
-		console.info(response);
-		callback();
-	});
+	execSvnQuery(
+		"update NODES set properties = replace(properties, '" + needle + "', '" + replacement + "') where local_relpath = '' and kind = 'dir'", 
+		callback
+	);
 }
 
 function findMprFile() {
@@ -295,7 +300,8 @@ function findMprFile() {
 }
 
 function getMprMendixVersion(callback) {
-	execMprQuery("select _ProductVersion from _MetaData", function(lines) {
+	execMprQuery("select _ProductVersion from _MetaData", function(err, lines) {
+		assert(!err);
 		callback(lines[0]);
 	});
 }
@@ -332,7 +338,8 @@ function updateBase(callback) {
 }
 
 function findLatestMprHash(callback) {
-	execGitCommand("ls-tree HEAD", function(treeFiles) {
+	execGitCommand("ls-tree HEAD", function(err, treeFiles) {
+		assert(!err);
 		for(var i = 0; i < treeFiles.length; i++)
 			if (treeFiles[i].indexOf(mprName) != -1) {
 				callback(treeFiles[i].split(/\s+/)[2]);
@@ -345,7 +352,8 @@ function findLatestMprHash(callback) {
 
 function hasGitConflict(callback) {
 	console.log("mxgit: detecting conflict status");
-	execGitCommand("diff --name-only --diff-filter=U", function(unmergedFiles) {
+	execGitCommand("diff --name-only --diff-filter=U", function(err, unmergedFiles) {
+		assert(!err);
 		callback(null, unmergedFiles.indexOf(mprName) != -1)
 	});
 }
@@ -358,7 +366,8 @@ function writeConflictData(callback) {
 	conflict_old column in ACTUAL_NODE table: mpr.merge-left.r# (BASE), conflict_new column: mpr.merge-right.r# (THEIRS)
 	modeler-merge-marker appears as soon as the file is merged by the modeler, but still has conflicts. Disappears as soon as last conflict is resolved in the modeler. */
 
-	execGitCommand("ls-files -u " + mprName, function(mergestatus) {
+	execGitCommand("ls-files -u " + mprName, function(err, mergestatus) {
+		assert(!err);
 		if (mergestatus.length < 3)
 			callback("mxgit: cannot handle the current conflict, please use an external tool");
 		else {
@@ -368,9 +377,9 @@ function writeConflictData(callback) {
 			seq([
 
 			    curry(storeBlobToFile, baseblob, mprName + ".left"),
-			    curry(storyBlobToFile, theirsblob, mprName + ".right"),
+			    curry(storeBlobToFile, theirsblob, mprName + ".right"),
 			    curry(execSvnQuery, "delete from ACTUAL_NODE where local_relpath = '" + mprName + "'"),
-			    curry(execSvnQuery, "insert into ACTUAL_NODE (local_relpath, conflict_old, conflict_new) values ('"+ mprName +"','"+ mprName +".left','"+ mprName +".right')"),
+			    curry(execSvnQuery, "insert into ACTUAL_NODE (wc_id, local_relpath, conflict_old, conflict_new) values (1,'"+ mprName +"','"+ mprName +".left','"+ mprName +".right')"),
 			    function(callback) {
 			    	console.log("mxgit: wrote conflicting files");
 			    	callback();
@@ -424,11 +433,10 @@ function execGitCommand(command, callback) {
 function execCommand(command, callback) {
 	child_process.exec(command, function(error, stdout, stderr){
 		if (error) {
-			console.error("Failed to execute: git " + command);
-			console.error(error);
-			process.exit(error.code);
+			callback(error);
 		}
-		callback(stdout.split(/\r?\n/));
+		else
+			callback(null, stdout.split(/\r?\n/));
 	});
 }
 
@@ -443,28 +451,30 @@ function execCommand(command, callback) {
  */
 
 
-function seq(funcs /* [func(callback(err, res), prevresult)] */, callback /*optional func(err, res)) */) {
+function seq(funcs /* [func(callback(err))] */, callback /*optional func(err, res)) */) {
 	//TODO: rename to sequence, do not use prevResult
-	function next(f, prevResult) {
-		if (f == null) {
-			if (callback)
-				callback(null, prevResult);
+	function next(nextItem) {
+		if (nextItem == null) {
+			if (callback) {
+				console.log(callback);
+				callback();
+			}
 		}
 		else {
-			f(function(err, result) {
+			nextItem(function(err) {
 				if (err) {
 					if (callback)
-						callback(err, null)
+						callback(err)
 					else
 						throw err;
 				}
 				else
-					next(funcs.shift(), result);
-			}, prevResult);
+					next(funcs.shift());
+			});
 		}
 	}
 
-	next(funcs.shift(), null);
+	next(funcs.shift());
 }
 
 function when(condfunc, whenfunc /*or array*/, elsefunc /*optional, or array*/) {
@@ -477,8 +487,10 @@ function when(condfunc, whenfunc /*or array*/, elsefunc /*optional, or array*/) 
 	}
 
 	return function(callback) {
-		confunc(function(conditionResult) {
-			if (conditionResult)
+		condfunc(function(err, conditionResult) {
+			if (err)
+				callback(err);
+			else if (conditionResult)
 				wrapSequence(whenfunc)(callback);
 			else {
 				if (elsefunc)
@@ -492,8 +504,16 @@ function when(condfunc, whenfunc /*or array*/, elsefunc /*optional, or array*/) 
 
 //todo: rename to makeAsync, remove prevResult
 function async(func) {
-	return function(callback, prevResult) {
-		callback(null, func(prevResult));
+	return function(callback) {
+		var res;
+		try {
+			res = func();
+		}
+		catch(e) {
+			callback(e);
+			return;
+		}
+		callback(null, res);
 	}
 }
 
@@ -503,14 +523,20 @@ function identity(value) {
 
 //todo: rename to partial
 function curry(func/*, args*/) {
-	var cargs = [];
+	var cargs = arguments;
 	var scope = this;
 
-	for(var i = 0; i < arguments.length -1; i++) //TODO: use concat + splice!
-		cargs[i] = arguments[i + 1];
-
 	return function() {
-		var args = [].concat(cargs).concat(arguments);
+		var args = [];
+		for(var i = 1; i < cargs.length; i++)
+			args.push(cargs[i]);
+		for(var i = 0; i < arguments.length; i++)
+			args.push(arguments[i]);
 		return func.apply(scope, args);
 	}
+}
+
+function assert(value) {
+	if (!value)
+		throw "Assertion failed";
 }

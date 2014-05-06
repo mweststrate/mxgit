@@ -59,6 +59,9 @@ Be chatty about all the things
 
 * SVN revert reverts to the wrong file
 * SVN icons, status, history etc .. doesn't make any sense
+* `Failed to execute: git git ls-tree HEAD { [Error: Command failed: fatal: Not a valid object name HEAD] killed: false, code: 128, signal: null }`. The git repository was initialized but no commit was ever made. Commit something first. 
+* New repositories need to have at least a single git command and have run `mxgit` (without arguments) at least once before being usable.
+* After a (failed) merge no git hook is run. Invoke `mxgit` manually. 
 
 # License
 This tool is unofficial and not supported by Mendix; use it at your own risk.but feel free to report any issues. 
