@@ -17,27 +17,27 @@ You can run this tool by executing `mxgit` in any directory that contains an .mp
 
 When `mxgit` is being run, it checks the current status of the git repository and copies it to the 'svn' status in such a way that the modeler will pick it up. This means that the tool will automatically set up the correct base revisions and conflict data if applicable. Usually, after running mxgit the model should be reopened in the modeler to make sure that the new state is picked up. 
 
-If you don't want to run `mxgit` manually when updating or commiting to this git repository, use `mxgit install` to set up git hooks. 
+If you don't want to run `mxgit` manually when updating or commiting to this git repository, use `mxgit --install` to set up git hooks. 
 
 # Options
 
-## mxgit install
+## mxgit --install
 
 Registers git hooks so that the `mxgit` command doesn't need to be called manually after pull, merging, commiting etc. 
 
-## mxgit reset
+## mxgit --reset
 
 Unregisters any hooks and removes all svn (meta)data. If your working copy is clean, this is a safe operation.
 
-## mxgit setprojectid &lt;project id&gt;
+## mxgit --setprojectid &lt;project id&gt;
 
 Sets the project id to the specified id, so that the stories and deployment integration in the modeler still (partially) work, despite the fact that this project is not a real team server project. You can find the project id under the project settings of the home.mendix.com project you want to connect it to. 
 
-## mxgit precommit
+## mxgit --precommit
 
 Command used internally by the git hooks. Checks whether the state of the current repository is safe enough to perform a git command. Git commits should not be performed when the model still has conflicts. 
 
-## mxgit postupdate
+## mxgit --postupdate
 
 Command used internally by the git hooks. Refreshes the base and conflict information of SVN, and should be called after any operation that might alter the current working copy. Basically the same as just running `mxgit`, except that some errors are ignored. 
 

@@ -1,3 +1,4 @@
+#! /usr/bin/env node
 /**
 	MXGIT - utility to manage Mendix projects with git
 	https://github.com/mweststrate/mxgit
@@ -14,6 +15,7 @@ var BASE_DATA = MENDIX_CACHE + 'base_data';
 var BASE_REV = MENDIX_CACHE + 'base_rev';
 var BASE_REV_GIT = MENDIX_CACHE + 'base_rev_git';
 var BASE_VER = MENDIX_CACHE + 'base_ver';
+var FILE_OPTS = { encoding : 'utf-8' };
 
 var BOGUS_REPO = "https://teamserver.sprintr.com/this_is_not_a_svn_repo_use_git/trunk";
 var MERGE_MARKER = "modeler-merge-marker;"
@@ -29,20 +31,33 @@ var ignoreMprLock = false;
 //
 //todo reset:remove .svn .mendix-cache, hooks
 //todo: info / debug statements
+//todo: npm package
 //todo: test on linux
 //todo: test merge stuff
-
-var params = {
-	install : false,
-	reset : false,
-	setprojectid : false,
-	precommit : false,
-	postupdate : false,
-	v : false,
-	help : false
-};
+//todo: run npm publish
 
 function main() {
+	var yargs = require('yargs')
+		.usage("mxgit: utility that aids versioning Mendix projects in git repositories\n" +
+			"See https://github.com/mweststrate/mxgit for the full documentation\n" +
+			"Copyright by Michel Weststrate<mweststrate@gmail.com> 2014. MIT Licensed\n" +
+			"\nBasic usage: 'mxgit -> creates or updates a local SVN working copy with the HEAD state of the git repo in this directory.")
+		.describe('install', 'Creates git hooks so that the mxgit çommand no longer needs to be invoked manually. ')
+		.describe('reset', 'Removes the local SVN working copy and git hooks.')
+		.describe('setprojectid', '<projectid> Sets the Mendix projectid. Use this if you want story and cloud integration in the Mendix Business Modeler')
+		.describe('precommit', 'Determines whether the Mendix model can be commit safely')
+		.describe('postupdate', 'Same as no arguments, but ignores the model lock')
+		.describe('v', 'Verbose')
+		.describe('help', 'Prints this help')
+		.boolean(["install", "reset", "precommit", "postcommit", "v", "help"])
+		.string(["setprojectid"]);
+
+	var params = yargs.argv;
+	if (params.help) {
+		yargs.showHelp();
+		process.exit(0);
+	}
+
 	console.log("mxgit: using mpr " + mprName);
 
 	seq([
@@ -50,7 +65,7 @@ function main() {
 		checkSvnDir,
 		initializeSvnDir, 
 		async(createCacheDir),
-		interpretParams		
+		curry(interpretParams, params)	
 	], function(err) {
 		if (err) {
 			console.log("mxgit: failed");
@@ -65,12 +80,8 @@ function main() {
 	});
 }
 
-function interpretParams(callback) {
-	if (params.help) {
-		printHelp(); 
-		callback();
-	}
-	else if (params.reset) {
+function interpretParams(params, callback) {
+	if (params.reset) {
 		reset(callback);
 	}
 	else if (params.setprojectid) {
@@ -105,7 +116,7 @@ function installGitHooks(callback) {
 }
 
 function reset(callback) {
-	
+
 }
 
 function updateStatus(callback) {
@@ -138,7 +149,7 @@ function initializeGitIgnore(callback) {
 	var current = [];
 	var changed = false;
 	if (fs.existsSync(".gitignore"))
-		current = fs.readFileSync(".gitignore").split(/\r?\n/);
+		current = fs.readFileSync(".gitignore", FILE_OPTS).split(/\r?\n/);
 
 	var needed = [
 		"/.svn",
@@ -165,7 +176,7 @@ function initializeGitIgnore(callback) {
 	}
 
 	if (changed)
-		fs.writeFileSync(".gitignore", current.join("\n"));
+		fs.writeFileSync(".gitignore", current.join("\n"), FILE_OPTS);
 
 	callback();
 }
@@ -257,15 +268,15 @@ function updateBase(callback) {
 
 		getMprMendixVersion(function(version) {
 			console.log("mxgit: using Mendix version " + version);
-			fs.writeFileSync(BASE_VER, version);
-			fs.writeFileSync(BASE_REV, '2');
+			fs.writeFileSync(BASE_VER, version, FILE_OPTS);
+			fs.writeFileSync(BASE_REV, "2", FILE_OPTS); //TODO: or use -1?
 
-			if(latestHash != null && fs.existsSync(BASE_REV_GIT) && latestHash == fs.readFileSync(BASE_REV_GIT)) {
+			if(latestHash != null && fs.existsSync(BASE_REV_GIT) && latestHash == fs.readFileSync(BASE_REV_GIT, FILE_OPTS)) {
 				callback();
 			} 
 			else {
 				requiresModelerReload = true;
-				fs.writeFileSync(BASE_REV_GIT, latestHash);
+				fs.writeFileSync(BASE_REV_GIT, latestHash, FILE_OPTS);
 
 				if (fs.existsSync(BASE_DATA))
 					fs.removeSync(BASE_DATA);
@@ -393,7 +404,6 @@ function execCommand(command, callback) {
  */
 
 
-
 function seq(funcs /* [func(callback(err, res), prevresult)] */, callback /*optional func(err, res)) */) {
 	//TODO: rename to sequence, do not use prevResult
 	function next(f, prevResult) {
@@ -402,7 +412,6 @@ function seq(funcs /* [func(callback(err, res), prevresult)] */, callback /*opti
 				callback(null, prevResult);
 		}
 		else {
-			//F needs try catch?
 			f(function(err, result) {
 				if (err) {
 					if (callback)
@@ -445,12 +454,7 @@ function when(condfunc, whenfunc /*or array*/, elsefunc /*optional, or array*/) 
 //todo: rename to makeAsync
 function async(func) {
 	return function(callback, prevResult) {
-		try {
-			callback(null, func(prevResult));
-		}
-		catch(e) {
-			callback(e, null);
-		}
+		callback(null, func(prevResult));
 	}
 }
 
