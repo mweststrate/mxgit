@@ -7,9 +7,20 @@
 	© 2014, MIT Licensed
 */
 
-var fs = require('fs-extra');
+//todo: info / debug statements
+//todo: test on linux
+//todo: test merge stuff
+//todo: run npm publish
+
+//V1.1:
+//support in-modeler update so that it is less often required to reopen the repo
+
+
+/* dependencies */
+var fs = require('fs-extra'); //https://github.com/jprichardson/node-fs-extra
 var child_process = require('child_process');
 
+/* constants */
 var MENDIX_CACHE = '.mendix-cache/';
 var BASE_DATA = MENDIX_CACHE + 'base_data';
 var BASE_REV = MENDIX_CACHE + 'base_rev';
@@ -20,21 +31,10 @@ var FILE_OPTS = { encoding : 'utf-8' };
 var BOGUS_REPO = "https://teamserver.sprintr.com/this_is_not_a_svn_repo_use_git/trunk";
 var MERGE_MARKER = "modeler-merge-marker;"
 
+/* state */
 var mprName = findMprFile();
 var requiresModelerReload = false;
 var ignoreMprLock = false;
-
-//todo: register git hooks
-//pre commit: check merge marker, check lock. 
-//http://stackoverflow.com/a/4185449
-//post commit, checkout, merge: do the normal thing (but do not install hooks, do not abort on lock)
-//
-//todo reset:remove .svn .mendix-cache, hooks
-//todo: info / debug statements
-//todo: npm package
-//todo: test on linux
-//todo: test merge stuff
-//todo: run npm publish
 
 function main() {
 	var yargs = require('yargs')
@@ -83,9 +83,9 @@ function main() {
 function interpretParams(params, callback) {
 	if (params.reset) {
 		reset(callback);
-	}
+	} 
 	else if (params.setprojectid) {
-		updateSprintrProjectId(callback);
+		updateSprintrProjectId(params.setprojectid, callback);
 	} 
 	else if (params.install) {
 		seq([
@@ -107,16 +107,47 @@ function interpretParams(params, callback) {
 	}
 }
 
-function printHelp() {
-	//TODO:
-}
-
 function installGitHooks(callback) {
-	//TODO:	
+	function writeGitHook(name, command) {
+		var filename = ".git/hooks/" + name;
+		if (fs.existsSync(filename))
+			console.warn("The git hook '" + filename + "' already exists! Skipping.");
+		else {
+			fs.writeFileSync(filename, "#!/bin/sh\nexec mxgit " + command, FILE_OPTS);
+			fs.chmodSync(filename, "+x") ;
+		}
+	}
+
+	//http://git-scm.com/book/en/Customizing-Git-Git-Hooks	
+	//http://stackoverflow.com/a/4185449
+	var hooks = {
+		"pre-commit" : "precommit",
+		"post-commit" : "postupdate",
+		"post-update" : "postupdate",
+		"post-checkout" : "postupdate",
+		"post-merge" : "postupdate"
+	};
+
+	for (var hook in hooks) {
+		writeGitHook(hook, hooks[hook]);
+	}
 }
 
 function reset(callback) {
+	//TODO: check whether these are our hooks!
+	[
+		MENDIX_CACHE, 
+		".svn", 
+		".git/hooks/pre-commit", 
+		".git/hooks/post-update", 
+		".git/hooks/post-commit", 
+		".git/hooks/post-checkout", 
+		".git/hooks/post-merge"
+	].map(function(thing) {
+		fs.removeSync(thing);
+	});
 
+	callback();
 }
 
 function updateStatus(callback) {
@@ -229,20 +260,28 @@ function initializeSvnDir(callback) {
 		fs.copySync(__dirname + "/dummysvn/.svn", process.cwd() + "/.svn");
 		execSvnQuery(
 			"update NODES set local_relpath = '" + mprName + "' where local_relpath = 'GitBasedTeamserverRepo.mpr'",
-			function() {
-					////todo: switch to non-real projectid & ts dir
-
-				callback();
-			}
+			callback
 		);
 	}
 	else
 		callback();
 }
 
-function updateSprintrProjectId(callback) {
-	//TODO: setup sprintr id if it doensn't exist and the flag is provided, store in NODES or ACTUAL_NODE table...
-	callback();
+function updateSprintrProjectId(projectid, callback) {
+	console.info("mxgit: updating project id to " + projectid);
+
+	if (!/^[a-zA-Z0-9-_]+$/.test(projectid)) {
+		console.error("'" + projectid + "' doesn't look like a valid project id");
+		process.exit(11);
+	}
+
+	var needle = "mx:sprintr-project-id 14 dummyprojectid";
+	var replacement = projectid.length + " " + projectid;
+	//TODO: Note: this doesn't update the project id once it is set. Requires --reset first. 
+	execSvnQuery("update NODES set properties = replace(properties, '" + needle + "', '" + replacement + "') where local_relpath = '' and kind = 'dir'", function(response) {
+		console.info(response);
+		callback();
+	});
 }
 
 function findMprFile() {
@@ -451,7 +490,7 @@ function when(condfunc, whenfunc /*or array*/, elsefunc /*optional, or array*/) 
 	}
 }
 
-//todo: rename to makeAsync
+//todo: rename to makeAsync, remove prevResult
 function async(func) {
 	return function(callback, prevResult) {
 		callback(null, func(prevResult));
@@ -459,9 +498,7 @@ function async(func) {
 }
 
 function identity(value) {
-	return function(callback) {
-		callback(null, value);
-	}
+	return async(function() { return value; });
 }
 
 //todo: rename to partial
