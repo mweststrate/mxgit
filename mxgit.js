@@ -7,8 +7,6 @@
 	© 2014, MIT Licensed
 */
 
-//todo: info / debug statements
-//todo: test on linux
 //todo: run npm publish
 
 //V1.1:
@@ -63,11 +61,11 @@ function main() {
 	info("using " + mprName);
 
 	seq([
-		async(checkGitDir),
+		makeAsync(checkGitDir),
 		checkSvnDir,
 		initializeSvnDir, 
-		async(createCacheDir),
-		curry(interpretParams, params)	
+		makeAsync(createCacheDir),
+		partial(interpretParams, params)	
 	], function(err) {
 		if (err) {
 			console.error(err);
@@ -162,8 +160,8 @@ function reset(callback) {
 
 function updateStatus(callback) {
 	seq([
-		async(checkMergeMarker),
-		async(checkMprLock),
+		makeAsync(checkMergeMarker),
+		makeAsync(checkMprLock),
 		initializeGitIgnore,
 		updateBase,
 		when(hasGitConflict, writeConflictData),
@@ -337,7 +335,7 @@ function updateBase(callback) {
 		getMprMendixVersion(function(version) {
 			debug("using Mendix version " + version);
 			fs.writeFileSync(BASE_VER, version, FILE_OPTS);
-			fs.writeFileSync(BASE_REV, "2", FILE_OPTS); //TODO: or use -1?
+			fs.writeFileSync(BASE_REV, "2", FILE_OPTS); 
 
 			if(latestHash != null && fs.existsSync(BASE_REV_GIT) && latestHash == fs.readFileSync(BASE_REV_GIT, FILE_OPTS)) {
 				debug("already up to date");
@@ -403,10 +401,10 @@ function writeConflictData(callback) {
 
 			seq([
 
-			    curry(storeBlobToFile, baseblob, mprName + ".left"),
-			    curry(storeBlobToFile, theirsblob, mprName + ".right"),
-			    curry(execSvnQuery, "delete from ACTUAL_NODE where local_relpath = '" + mprName + "'"),
-			    curry(execSvnQuery, "insert into ACTUAL_NODE (wc_id, local_relpath, conflict_old, conflict_new) values (1,'"+ mprName +"','"+ mprName +".left','"+ mprName +".right')")
+			    partial(storeBlobToFile, baseblob, mprName + ".left"),
+			    partial(storeBlobToFile, theirsblob, mprName + ".right"),
+			    partial(execSvnQuery, "delete from ACTUAL_NODE where local_relpath = '" + mprName + "'"),
+			    partial(execSvnQuery, "insert into ACTUAL_NODE (wc_id, local_relpath, conflict_old, conflict_new) values (1,'"+ mprName +"','"+ mprName +".left','"+ mprName +".right')")
 			], function(err) {
 				assert(!err);
 				done();
@@ -492,7 +490,6 @@ function execCommand(command, callback) {
 
 
 function seq(funcs /* [func(callback(err))] */, callback /*optional func(err, res)) */) {
-	//TODO: rename to sequence, do not use prevResult
 	function next(nextItem) {
 		if (nextItem == null) {
 			if (callback) {
@@ -519,7 +516,7 @@ function seq(funcs /* [func(callback(err))] */, callback /*optional func(err, re
 function when(condfunc, whenfunc /*or array*/, elsefunc /*optional, or array*/) {
 	function wrapSequence(func) {
 		if (Array.isArray(func)) {
-			return curry(seq, func); //how convenient
+			return partial(seq, func); //how convenient
 		}
 		else
 			return func;
@@ -541,8 +538,7 @@ function when(condfunc, whenfunc /*or array*/, elsefunc /*optional, or array*/) 
 	}
 }
 
-//todo: rename to makeAsync, remove prevResult
-function async(func) {
+function makeAsync(func) {
 	return function(callback) {
 		var res;
 		try {
@@ -557,11 +553,10 @@ function async(func) {
 }
 
 function identity(value) {
-	return async(function() { return value; });
+	return makeAsync(function() { return value; });
 }
 
-//todo: rename to partial
-function curry(func/*, args*/) {
+function partial(func/*, args*/) {
 	var cargs = arguments;
 	var scope = this;
 
