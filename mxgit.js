@@ -72,12 +72,12 @@ function main() {
 	], function(err) {
 		if (err) {
 			console.error(err);
-			log("[ERROR] aborted.");
+			info("[ERROR] aborted.");
 			process.exit(1);
 		}
 		else {
 			if (requiresModelerReload)
-				console.log("\n>>> PLEASE CLOSE AND RE-OPEN THE MODEL IN THE MODELER <<<\n")
+				console.log("\n>>> PLEASE REOPEN THE MODEL IN THE MENDIX BUSINESS MODELER <<<\n");
 			else
 				info("done.");
 		}
@@ -166,7 +166,7 @@ function installMergeDriver(callback) {
 	]);
 
 	done();
-	callback;
+	callback();
 }
 
 function reset(callback) {
@@ -193,7 +193,7 @@ function reset(callback) {
 	].map(function(thing) {
 		if (fs.existsSync(thing))
 			cleanConfigFile(thing);
-	})
+	});
 
 	done();
 	callback();
@@ -262,6 +262,7 @@ function initializeGitIgnore(callback) {
 		"/.project",
 	];
 
+	//TODO: use updateConfigFile
 	for(var i = 0; i < needed.length; i++) {
 		if (-1 == current.indexOf(needed[i])) {
 			changed = true;
@@ -386,7 +387,7 @@ function updateBase(callback) {
 			fs.writeFileSync(BASE_VER, version, FILE_OPTS);
 			fs.writeFileSync(BASE_REV, "2", FILE_OPTS); 
 
-			if(latestHash != null && fs.existsSync(BASE_REV_GIT) && latestHash == fs.readFileSync(BASE_REV_GIT, FILE_OPTS)) {
+			if(latestHash !== null && fs.existsSync(BASE_REV_GIT) && latestHash == fs.readFileSync(BASE_REV_GIT, FILE_OPTS)) {
 				debug("already up to date");
 				callback();
 			} 
@@ -397,7 +398,7 @@ function updateBase(callback) {
 				if (fs.existsSync(BASE_DATA))
 					fs.removeSync(BASE_DATA);
 
-				if (latestHash == null) {
+				if (latestHash === null) {
 					fs.copy(mprName, BASE_DATA, callback);
 					info("initialized new base version of " + mprName);
 				}
@@ -428,7 +429,7 @@ function hasGitConflict(callback) {
 	debug("detecting conflict status");
 	execGitCommand("diff --name-only --diff-filter=U", function(err, unmergedFiles) {
 		assert(!err);
-		callback(null, unmergedFiles.indexOf(mprName) != -1)
+		callback(null, unmergedFiles.indexOf(mprName) != -1);
 	});
 }
 
@@ -453,7 +454,7 @@ function gitMergeDrive(fileArray) {
 	// stores the conflict data in svn and after that marks the conflict as unresolved
 
 	debug("processing mpr merge " + fileArray);
-	if (!fileArray.length == 3)
+	if (fileArray.length != 3)
 		throw "Expected exactly three arguments for a --merge command";
 
 	fs.copySync(fileArray[0], mprName + ".left");
@@ -503,7 +504,7 @@ function writeConflictData(callback) {
 }
 
 function storeBlobToFile(hash, filename, callback) {
-	out = fs.openSync(filename, 'w');
+	var out = fs.openSync(filename, 'w');
 	var child = child_process.spawn("git", ["cat-file", "-p", hash], {
 		stdio: ['pipe', out, 'pipe']
 	});
@@ -512,7 +513,7 @@ function storeBlobToFile(hash, filename, callback) {
 		debug("stored " + hash + " -> " + filename);
 		callback();
 	});
-};
+}
 
 function updateConfigFile(filename, requiredItems) {
 	var contents = "";
@@ -584,7 +585,7 @@ function execMprQuery(query, callback) {
 
 function execSqliteQuery(file, query, callback) {
 	var sqlite = process.platform == 'win32' ? __dirname + "/sqlite3" : "sqlite3";
-	var query = query.replace(/[\\\"]/g, function(r) { return "\\" + r; });
+	query = query.replace(/[\\\"]/g, function(r) { return "\\" + r; });
 
 	execCommand([sqlite, file, "\"" + query + "\""].join(" "), callback);
 }
@@ -594,7 +595,7 @@ function execGitCommand(command, callback) {
 }
 
 function execCommand(command, callback) {
-	child_process.exec(command, function(error, stdout, stderr){
+	child_process.exec(command, function(error, stdout) {
 		if (error) {
 			callback(error);
 		}
@@ -614,9 +615,9 @@ function execCommand(command, callback) {
  */
 
 
-function seq(funcs /* [func(callback(err))] */, callback /*optional func(err, res)) */) {
+function seq(funcs /* [func(callback(err))] */, callback /*optional func(err)) */) {
 	function next(nextItem) {
-		if (nextItem == null) {
+		if (!nextItem) {
 			if (callback) {
 				callback();
 			}
@@ -625,7 +626,7 @@ function seq(funcs /* [func(callback(err))] */, callback /*optional func(err, re
 			nextItem(function(err) {
 				if (err) {
 					if (callback)
-						callback(err)
+						callback(err);
 					else
 						throw err;
 				}
@@ -660,7 +661,7 @@ function when(condfunc, whenfunc /*or array*/, elsefunc /*optional, or array*/) 
 					callback();
 			}
 		});
-	}
+	};
 }
 
 function makeAsync(func) {
@@ -674,11 +675,7 @@ function makeAsync(func) {
 			return;
 		}
 		callback(null, res);
-	}
-}
-
-function identity(value) {
-	return makeAsync(function() { return value; });
+	};
 }
 
 function partial(func/*, args*/) {
@@ -689,10 +686,10 @@ function partial(func/*, args*/) {
 		var args = [];
 		for(var i = 1; i < cargs.length; i++)
 			args.push(cargs[i]);
-		for(var i = 0; i < arguments.length; i++)
-			args.push(arguments[i]);
+		for(var j = 0; j < arguments.length; j++)
+			args.push(arguments[j]);
 		return func.apply(scope, args);
-	}
+	};
 }
 
 function assert(value) {
