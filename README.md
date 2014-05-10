@@ -61,10 +61,10 @@ Be chatty about all the things
 * SVN icons, status, history etc .. doesn't make any sense
 * `Failed to execute: git git ls-tree HEAD { [Error: Command failed: fatal: Not a valid object name HEAD] killed: false, code: 128, signal: null }`. The git repository was initialized but no commit was ever made. Commit something first. 
 * New repositories need to have at least a single git command and have run `mxgit` (without arguments) at least once before being usable.
-* After a (failed) merge no git hook is run. Invoke `mxgit` manually. 
 * --setprojectid can be only once. Use --reset first to assign a new project id. 
 * --reset might remove git hooks not created by this script
 * --install will fail if similar git hooks are already available
+* The modeler will always indicate that at least the project file is changed. This usually isn't the case. Check `git status` to be sure. 
 
 # License
 This tool is unofficial and not supported by Mendix; use it at your own risk.but feel free to report any issues. 

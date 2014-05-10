@@ -8,6 +8,8 @@
 */
 
 //todo: run npm publish
+//todo: test linux
+//todo: fix always having changes; if up to date, remove the record from ACTUAL_NODE
 
 //V1.1:
 //support in-modeler update so that it is less often required to reopen the repo
@@ -46,9 +48,10 @@ function main() {
 		.describe('setprojectid', '<projectid> Sets the Mendix projectid. Use this if you want story and cloud integration in the Mendix Business Modeler')
 		.describe('precommit', 'Determines whether the Mendix model can be commit safely')
 		.describe('postupdate', 'Same as no arguments, but ignores the model lock')
+		.describe('merge', 'Used internally as git driver. Takes temporarily files as argument: <base> <mine> <theirs>')
 		.describe('v', 'Verbose')
 		.describe('help', 'Prints this help')
-		.boolean(["install", "reset", "precommit", "postcommit", "v", "help"])
+		.boolean(["install", "reset", "precommit", "postcommit", "v", "help", "merge"])
 		.string(["setprojectid"]);
 
 	var params = yargs.argv;
@@ -88,10 +91,11 @@ function interpretParams(params, callback) {
 	else if (params.setprojectid) {
 		updateSprintrProjectId(params.setprojectid, callback);
 	} 
-	else if (params.install) {
+	else if (params.install) { //todo: rename to init?
 		seq([
 			initializeGitIgnore, 
-			installGitHooks
+			installGitHooks,
+			installMergeDriver
 		], callback);
 	}
 	else if (params.precommit) {
@@ -102,6 +106,9 @@ function interpretParams(params, callback) {
 	else if (params.postupdate) {
 		ignoreMprLock = true;
 		updateStatus(callback);
+	}
+	else if (params.merge) {
+		gitMergeDrive(params._);
 	}
 	else {
 		updateStatus(callback);
@@ -122,6 +129,7 @@ function installGitHooks(callback) {
 
 	//http://git-scm.com/book/en/Customizing-Git-Git-Hooks	
 	//http://stackoverflow.com/a/4185449
+	//TODO: or use filter for .mpr file that as side effect runs update? that is less of a hassle with existing hooks
 	var hooks = {
 		"pre-commit" : "precommit",
 		"post-commit" : "postupdate",
@@ -139,8 +147,31 @@ function installGitHooks(callback) {
 	callback();
 }
 
+function installMergeDriver(callback) {
+	info("setting up merge driver for .mpr files...");
+	/* 
+	.git/info/attributes instead of .gitattributes, 
+	so that the attributes are not stored in the repo, since others might not be using mxgit
+	*/
+	updateConfigFile(".git/info/attributes",["/*.mpr merge=mxgit"]);
+
+	/*
+	[merge "mxgit"]
+		name = mxgit merge driver for mpr's
+		driver = mxgit --merge %O %A %B
+		recursive = binary
+	*/
+	updateConfigFile(".git/config", [
+		"[merge \"mxgit\"]\n\tname = mxgit merge driver for mpr files\n\tdriver = mxgit --merge %O %A %B"
+	]);
+
+	done();
+	callback;
+}
+
 function reset(callback) {
 	info("resetting. Removing all traces of mxgit...");
+	
 	//TODO: check whether these are our hooks!
 	[
 		MENDIX_CACHE, 
@@ -153,6 +184,16 @@ function reset(callback) {
 	].map(function(thing) {
 		fs.removeSync(thing);
 	});
+
+	//clean altered config files
+	[
+		".gitignore",
+		".git/config",
+		".git/info/attributes"
+	].map(function(thing) {
+		if (fs.existsSync(thing))
+			cleanConfigFile(thing);
+	})
 
 	done();
 	callback();
@@ -190,6 +231,14 @@ function checkGitDir() {
 }
 
 function initializeGitIgnore(callback) {
+	/* Patterns which are specific to a particular repository but which 
+	do not need to be shared with other related repositories (e.g., auxiliary 
+	files that live inside the repository but are specific to one user’s workflow) 
+	should go into the $GIT_DIR/info/exclude file.
+	https://www.kernel.org/pub/software/scm/git/docs/gitignore.html */
+
+	//TODO: use info/exclude instead of .gitignore?
+
 	debug("updating .gitignore file");
 	var current = [];
 	var changed = false;
@@ -383,6 +432,45 @@ function hasGitConflict(callback) {
 	});
 }
 
+function showMergeMessage() {
+	console.log("");
+	console.log(">>> MERGE CONFLICT DETECTED. PLEASE SOLVE THE CONFLICTS IN THE MODELER <<<");
+	console.log(">>> TO MARK RESOLVED, USE 'git add " + mprName +"' <<<"); 
+	console.log("");
+
+}
+
+function markMprAsConflicted(callback) {
+	seq([
+		partial(execSvnQuery, "delete from ACTUAL_NODE where local_relpath = '" + mprName + "'"),
+		partial(execSvnQuery, "insert into ACTUAL_NODE (wc_id, local_relpath, conflict_old, conflict_new) values (1,'"+ mprName +"','"+ mprName +".left','"+ mprName +".right')")
+	], callback);
+}
+
+function gitMergeDrive(fileArray) {
+	// mxgit --merge as merge driver was introduced because git itself has no hook whenever a merge fails,
+	// which is exactly the case we are interested in. So we introduce our own driver that 
+	// stores the conflict data in svn and after that marks the conflict as unresolved
+
+	debug("processing mpr merge " + fileArray);
+	if (!fileArray.length == 3)
+		throw "Expected exactly three arguments for a --merge command";
+
+	fs.copySync(fileArray[0], mprName + ".left");
+	fs.copySync(fileArray[2], mprName + ".right");
+
+	markMprAsConflicted(function(err) {
+		assert(!err);
+		showMergeMessage();
+
+		//https://www.kernel.org/pub/software/scm/git/docs/gitattributes.html#_defining_a_custom_merge_driver
+		//Exit non-zero, mark the file as conflicted so that the modeler will merge it
+		//(in fact, it would do the same if we would return zero, but this makes it more clear that
+		//a conflict should be merged; use git add in the end to mark resolved)
+		process.exit(1); 
+	});
+}
+
 function writeConflictData(callback) {
 	info("merge conflict detected, writing merge information...");
 	requiresModelerReload = true;
@@ -400,14 +488,14 @@ function writeConflictData(callback) {
 			var theirsblob = mergestatus[2].split(/\s+/)[1];
 
 			seq([
-
 			    partial(storeBlobToFile, baseblob, mprName + ".left"),
 			    partial(storeBlobToFile, theirsblob, mprName + ".right"),
-			    partial(execSvnQuery, "delete from ACTUAL_NODE where local_relpath = '" + mprName + "'"),
-			    partial(execSvnQuery, "insert into ACTUAL_NODE (wc_id, local_relpath, conflict_old, conflict_new) values (1,'"+ mprName +"','"+ mprName +".left','"+ mprName +".right')")
+			    markMprAsConflicted
 			], function(err) {
 				assert(!err);
 				done();
+
+				showMergeMessage();
 				callback();
 			});
 		}
@@ -425,6 +513,43 @@ function storeBlobToFile(hash, filename, callback) {
 		callback();
 	});
 };
+
+function updateConfigFile(filename, requiredItems) {
+	var contents = "";
+	if (fs.existsSync(filename))
+		contents = fs.readFileSync(filename, FILE_OPTS);
+
+	var missing = [];
+	for(var i = 0; i < requiredItems.length; i++) {
+		var re = new RegExp("(^|\n)(" + escapeRegExp(requiredItems[i]) + ")($|\r?\n)");
+		if (!re.test(contents))
+			missing.push(requiredItems[i]);
+	}
+
+	if (missing.length) {
+		missing.unshift("\n#mxgit-marker-start");
+		missing.push("#mxgit-marker-end\n");
+		fs.appendFileSync(filename, missing.join("\n"), FILE_OPTS);
+	}
+}
+
+function cleanConfigFile(filename) {
+	if (fs.existsSync) {
+		var data = fs.readFileSync(filename, FILE_OPTS);
+		var newdata = data.replace(/(\n#mxgit-marker-start)([\s\S]*?)(#mxgit-marker-end\n)/g,"");
+		if (newdata != data)
+			fs.writeFileSync(filename, newdata, FILE_OPTS);
+	}
+}
+
+function escapeRegExp(str) {
+	//http://stackoverflow.com/questions/3446170/escape-string-for-use-in-javascript-regex
+	return str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&");
+}
+
+/**
+	Logging and startup 
+*/
 
 function info(msg) {
 	lastInfoMsg = msg;
