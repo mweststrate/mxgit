@@ -171,15 +171,15 @@ function installMergeDriver(callback) {
 
 function reset(callback) {
 	info("resetting. Removing all traces of mxgit...");
-	
+
 	//TODO: check whether these are our hooks!
 	[
-		MENDIX_CACHE, 
-		".svn", 
-		".git/hooks/pre-commit", 
-		".git/hooks/post-update", 
-		".git/hooks/post-commit", 
-		".git/hooks/post-checkout", 
+		MENDIX_CACHE,
+		".svn",
+		".git/hooks/pre-commit",
+		".git/hooks/post-update",
+		".git/hooks/post-commit",
+		".git/hooks/post-checkout",
 		".git/hooks/post-merge"
 	].map(function(thing) {
 		fs.removeSync(thing);
@@ -205,7 +205,8 @@ function updateStatus(callback) {
 		makeAsync(checkMprLock),
 		initializeGitIgnore,
 		updateBase,
-		when(hasGitConflict, writeConflictData),
+		when(isMprModified, function(cb) { cb(); }, markMprAsNotModified),
+		when(isMprConflicted, writeConflictData),
 		function(callback) {
 			debug("status updated.");
 			callback();
@@ -231,21 +232,16 @@ function checkGitDir() {
 }
 
 function initializeGitIgnore(callback) {
-	/* Patterns which are specific to a particular repository but which 
-	do not need to be shared with other related repositories (e.g., auxiliary 
-	files that live inside the repository but are specific to one user’s workflow) 
+	/* Patterns which are specific to a particular repository but which
+	do not need to be shared with other related repositories (e.g., auxiliary
+	files that live inside the repository but are specific to one user’s workflow)
 	should go into the $GIT_DIR/info/exclude file.
 	https://www.kernel.org/pub/software/scm/git/docs/gitignore.html */
 
 	//TODO: use info/exclude instead of .gitignore?
 
 	debug("updating .gitignore file");
-	var current = [];
-	var changed = false;
-	if (fs.existsSync(".gitignore"))
-		current = fs.readFileSync(".gitignore", FILE_OPTS).split(/\r?\n/);
-
-	var needed = [
+	updateConfigFile(".gitignore", [
 		"/.svn",
 		"/modeler-merge-marker",
 		"/.mendix-cache",
@@ -260,21 +256,7 @@ function initializeGitIgnore(callback) {
 		"/*.launch",
 		"/.classpath",
 		"/.project",
-	];
-
-	//TODO: use updateConfigFile
-	for(var i = 0; i < needed.length; i++) {
-		if (-1 == current.indexOf(needed[i])) {
-			changed = true;
-			current.push(needed[i]);
-		}
-	}
-
-	if (changed) {
-		fs.writeFileSync(".gitignore", current.join("\n"), FILE_OPTS);
-		info("updated .gitignore file");
-	}
-
+	]);
 	callback();
 }
 
@@ -372,25 +354,29 @@ function findMprFile() {
 function getMprMendixVersion(callback) {
 	debug("determine Mendix version");
 	execMprQuery("select _ProductVersion from _MetaData", function(err, lines) {
-		assert(!err);
-		callback(lines[0]);
+		assertNotError(err);
+		callback(null, lines[0]);
 	});
 }
 
 function updateBase(callback) {
 	debug("updating base data");
-	findLatestMprHash(function(latestHash) {
-		debug("setting base to " + latestHash);
 
-		getMprMendixVersion(function(version) {
+	//TODO: if file status is not modified, remove changed status from svn
+	using([
+			findLatestMprHash,
+			getMprMendixVersion
+		],
+		function(err, latestHash, version) {
+			assertNotError(err);
 			debug("using Mendix version " + version);
 			fs.writeFileSync(BASE_VER, version, FILE_OPTS);
-			fs.writeFileSync(BASE_REV, "2", FILE_OPTS); 
+			fs.writeFileSync(BASE_REV, "2", FILE_OPTS);
 
 			if(latestHash !== null && fs.existsSync(BASE_REV_GIT) && latestHash == fs.readFileSync(BASE_REV_GIT, FILE_OPTS)) {
 				debug("already up to date");
 				callback();
-			} 
+			}
 			else {
 				requiresModelerReload = true;
 				fs.writeFileSync(BASE_REV_GIT, latestHash, FILE_OPTS);
@@ -399,58 +385,87 @@ function updateBase(callback) {
 					fs.removeSync(BASE_DATA);
 
 				if (latestHash === null) {
-					fs.copy(mprName, BASE_DATA, callback);
+					fs.copySync(mprName, BASE_DATA);
 					info("initialized new base version of " + mprName);
+					callback();
 				}
 				else {
 					info("wrote new base version of " + mprName);
 					storeBlobToFile(latestHash, BASE_DATA, callback);
 				}
 			}
-		});
 	});
 }
 
 function findLatestMprHash(callback) {
 	debug("searching base version of " + mprName);
 	execGitCommand("ls-tree HEAD", function(err, treeFiles) {
-		assert(!err);
+		if (err) {
+			console.warn("[WARN] failed to find git HEAD:  "+ err);
+			callback(null, null);
+			return;
+		}
+
 		for(var i = 0; i < treeFiles.length; i++)
 			if (treeFiles[i].indexOf(mprName) != -1) {
-				callback(treeFiles[i].split(/\s+/)[2]);
+				callback(null, treeFiles[i].split(/\s+/)[2]);
 				return;
 			}
 
-		callback(null);
+		callback(null, null);
 	});
 }
 
-function hasGitConflict(callback) {
+function isMprModified(callback) {
+	debug("detecting modified status");
+	getGitFileStatus(function(status) {
+		callback(null, "M" == status);
+	});
+}
+
+function isMprConflicted(callback) {
 	debug("detecting conflict status");
-	execGitCommand("diff --name-only --diff-filter=U", function(err, unmergedFiles) {
-		assert(!err);
-		callback(null, unmergedFiles.indexOf(mprName) != -1);
+	getGitFileStatus(function(status) {
+		callback(null, "U" == status);
+	});
+}
+
+function getGitFileStatus(callback) {
+	debug("detecting file status");
+	execGitCommand("status --porcelain " + mprName, function(err, lines) {
+		assertNotError(err);
+		if (lines.length) {
+			var status =  lines[0].charAt(1);
+			debug("file status is '" + status + "'");
+			callback(status ? status : null);
+		}
+		else
+			callback(null);
 	});
 }
 
 function showMergeMessage() {
 	console.log("");
 	console.log(">>> MERGE CONFLICT DETECTED. PLEASE SOLVE THE CONFLICTS IN THE MODELER <<<");
-	console.log(">>> TO MARK RESOLVED, USE 'git add " + mprName +"' <<<"); 
+	console.log(">>> TO MARK RESOLVED, USE 'git add " + mprName +"' <<<");
 	console.log("");
 
 }
 
 function markMprAsConflicted(callback) {
 	seq([
-		partial(execSvnQuery, "delete from ACTUAL_NODE where local_relpath = '" + mprName + "'"),
+		markMprAsNotModified,
 		partial(execSvnQuery, "insert into ACTUAL_NODE (wc_id, local_relpath, conflict_old, conflict_new) values (1,'"+ mprName +"','"+ mprName +".left','"+ mprName +".right')")
 	], callback);
 }
 
+function markMprAsNotModified(callback) {
+	execSvnQuery("delete from ACTUAL_NODE where local_relpath = '" + mprName + "'", callback);
+}
+
 function gitMergeDrive(fileArray) {
 	// mxgit --merge as merge driver was introduced because git itself has no hook whenever a merge fails,
-	// which is exactly the case we are interested in. So we introduce our own driver that 
+	// which is exactly the case we are interested in. So we introduce our own driver that
 	// stores the conflict data in svn and after that marks the conflict as unresolved
 
 	debug("processing mpr merge " + fileArray);
@@ -637,6 +652,28 @@ function seq(funcs /* [func(callback(err))] */, callback /*optional func(err)) *
 	}
 
 	next(funcs.shift());
+}
+
+function using(paramFuncs /* [func(callback(err,res))] */, callback /* func(err, res) */) {
+	var params = [];
+	var left = paramFuncs.length;
+	var aborted = false;
+
+	paramFuncs.map(function(func, idx) {
+		func(function(err, res) {
+			if (aborted)
+				return;
+			else if (err) {
+				aborted = true;
+				callback(err);
+			}
+			else {
+				params[idx] = res;
+				if (--left === 0)
+					callback.apply(null, [null].concat(params));
+			}
+		});
+	});
 }
 
 function when(condfunc, whenfunc /*or array*/, elsefunc /*optional, or array*/) {
