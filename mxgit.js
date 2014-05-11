@@ -2,7 +2,7 @@
 /**
 	MXGIT - utility to manage Mendix projects with git
 	https://github.com/mweststrate/mxgit
-	
+
 	Author: Michel Weststrate <mweststrate@gmail.com>
 	© 2014, MIT Licensed
 */
@@ -13,7 +13,7 @@
 
 //V1.1:
 //support in-modeler update so that it is less often required to reopen the repo
-//see other known issues. 
+//see other known issues.
 
 /* dependencies */
 var fs = require('fs-extra'); //https://github.com/jprichardson/node-fs-extra
@@ -66,9 +66,9 @@ function main() {
 	seq([
 		makeAsync(checkGitDir),
 		checkSvnDir,
-		initializeSvnDir, 
+		initializeSvnDir,
 		makeAsync(createCacheDir),
-		partial(interpretParams, params)	
+		partial(interpretParams, params)
 	], function(err) {
 		if (err) {
 			console.error(err);
@@ -87,13 +87,13 @@ function main() {
 function interpretParams(params, callback) {
 	if (params.reset) {
 		reset(callback);
-	} 
+	}
 	else if (params.setprojectid) {
 		updateSprintrProjectId(params.setprojectid, callback);
-	} 
+	}
 	else if (params.install) { //todo: rename to init?
 		seq([
-			initializeGitIgnore, 
+			initializeGitIgnore,
 			installGitHooks,
 			installMergeDriver
 		], callback);
@@ -121,13 +121,13 @@ function installGitHooks(callback) {
 		if (fs.existsSync(filename))
 			console.warn("The git hook '" + filename + "' already exists! Skipping.");
 		else {
-			fs.writeFileSync(filename, "#!/bin/sh\necho 'git -> mxgit: running hook " + name + "'\nexec mxgit " + command, FILE_OPTS);
+			fs.writeFileSync(filename, "#!/bin/sh\necho 'git -> mxgit: running hook " + name + "'\nexec mxgit --" + command, FILE_OPTS);
 			if (process.platform != 'win32')
 				fs.chmodSync(filename, "+x") ;
 		}
 	}
 
-	//http://git-scm.com/book/en/Customizing-Git-Git-Hooks	
+	//http://git-scm.com/book/en/Customizing-Git-Git-Hooks
 	//http://stackoverflow.com/a/4185449
 	//TODO: or use filter for .mpr file that as side effect runs update? that is less of a hassle with existing hooks
 	var hooks = {
@@ -149,8 +149,8 @@ function installGitHooks(callback) {
 
 function installMergeDriver(callback) {
 	info("setting up merge driver for .mpr files...");
-	/* 
-	.git/info/attributes instead of .gitattributes, 
+	/*
+	.git/info/attributes instead of .gitattributes,
 	so that the attributes are not stored in the repo, since others might not be using mxgit
 	*/
 	updateConfigFile(".git/info/attributes",["/*.mpr merge=mxgit"]);
@@ -283,7 +283,7 @@ function checkMprLock() {
 	/* a lock file exists as long as the mpr is opened in a modeler (or if the modeler didn't exit cleanly */
 	if (fs.existsSync(mprName + ".lock")) {
 		if (ignoreMprLock) {
-			console.warn("The file '" + mprName + "' is currently being edited in the Mendix Business Modeler.");
+			console.warn("[WARN] The file '" + mprName + "' is currently being edited in the Mendix Business Modeler.");
 			requiresModelerReload = true;
 		}
 		else {
@@ -307,7 +307,7 @@ function checkSvnDir(callback) {
 	/* svn dir shouldn't exists, or it should be our dummy repository */
 	if (fs.existsSync(".svn")) {
 		execSvnQuery("select root from REPOSITORY", function(err, results) {
-			assert(!err);
+			assertNotError(err);
 			if (results[0].trim() == BOGUS_REPO)
 				callback();
 			else {
@@ -328,7 +328,7 @@ function initializeSvnDir(callback) {
 		execSvnQuery(
 			"update NODES set local_relpath = '" + mprName + "' where local_relpath = 'GitBasedTeamserverRepo.mpr'",
 			function(err) {
-				assert(!err);
+				assertNotError(err);
 				done();
 				callback();
 			}
@@ -348,11 +348,11 @@ function updateSprintrProjectId(projectid, callback) {
 
 	var needle = "mx:sprintr-project-id 14 dummyprojectid";
 	var replacement = "mx:sprintr-project-id " + projectid.length + " " + projectid;
-	//TODO: Note: this doesn't update the project id once it is set. Requires --reset first. 
+	//TODO: Note: this doesn't update the project id once it is set. Requires --reset first.
 	execSvnQuery(
-		"update NODES set properties = replace(properties, '" + needle + "', '" + replacement + "') where local_relpath = '' and kind = 'dir'", 
+		"update NODES set properties = replace(properties, '" + needle + "', '" + replacement + "') where local_relpath = '' and kind = 'dir'",
 		function(err) {
-			assert(!err);
+			assertNotError(err);
 			done();
 			callback();
 		}
@@ -461,14 +461,14 @@ function gitMergeDrive(fileArray) {
 	fs.copySync(fileArray[2], mprName + ".right");
 
 	markMprAsConflicted(function(err) {
-		assert(!err);
+		assertNotError(err);
 		showMergeMessage();
 
 		//https://www.kernel.org/pub/software/scm/git/docs/gitattributes.html#_defining_a_custom_merge_driver
 		//Exit non-zero, mark the file as conflicted so that the modeler will merge it
 		//(in fact, it would do the same if we would return zero, but this makes it more clear that
 		//a conflict should be merged; use git add in the end to mark resolved)
-		process.exit(1); 
+		process.exit(1);
 	});
 }
 
@@ -476,12 +476,12 @@ function writeConflictData(callback) {
 	info("merge conflict detected, writing merge information...");
 	requiresModelerReload = true;
 
-	/* A SVN conflict is stored as follows: 
+	/* A SVN conflict is stored as follows:
 	conflict_old column in ACTUAL_NODE table: mpr.merge-left.r# (BASE), conflict_new column: mpr.merge-right.r# (THEIRS)
 	modeler-merge-marker appears as soon as the file is merged by the modeler, but still has conflicts. Disappears as soon as last conflict is resolved in the modeler. */
 
 	execGitCommand("ls-files -u " + mprName, function(err, mergestatus) {
-		assert(!err);
+		assertNotError(err);
 		if (mergestatus.length < 3)
 			callback("mxgit: cannot handle the current conflict, please use an external tool");
 		else {
@@ -489,11 +489,11 @@ function writeConflictData(callback) {
 			var theirsblob = mergestatus[2].split(/\s+/)[1];
 
 			seq([
-			    partial(storeBlobToFile, baseblob, mprName + ".left"),
-			    partial(storeBlobToFile, theirsblob, mprName + ".right"),
-			    markMprAsConflicted
+				partial(storeBlobToFile, baseblob, mprName + ".left"),
+				partial(storeBlobToFile, theirsblob, mprName + ".right"),
+				markMprAsConflicted
 			], function(err) {
-				assert(!err);
+				assertNotError(err);
 				done();
 
 				showMergeMessage();
@@ -549,7 +549,7 @@ function escapeRegExp(str) {
 }
 
 /**
-	Logging and startup 
+	Logging and startup
 */
 
 function info(msg) {
@@ -692,7 +692,7 @@ function partial(func/*, args*/) {
 	};
 }
 
-function assert(value) {
-	if (!value)
-		throw "Assertion failed";
+function assertNotError(err) {
+	if (err)
+		console.trace(err);
 }
