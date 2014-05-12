@@ -1,4 +1,5 @@
-#! /usr/bin/env node
+#!/usr/bin/env node
+
 /**
 	MXGIT - utility to manage Mendix projects with git
 	https://github.com/mweststrate/mxgit
@@ -123,7 +124,7 @@ function installGitHooks(callback) {
 		else {
 			fs.writeFileSync(filename, "#!/bin/sh\n#mxgit-marker-hook\necho 'git -> mxgit: running hook " + name + "'\nexec mxgit --" + command, FILE_OPTS);
 			if (process.platform != 'win32')
-				fs.chmodSync(filename, "+x") ;
+				fs.chmodSync(filename, 0755 /*octal!*/) ;
 		}
 	}
 
