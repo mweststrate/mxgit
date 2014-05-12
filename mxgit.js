@@ -9,7 +9,6 @@
 
 //todo: run npm publish
 //todo: test linux
-//todo: fix always having changes; if up to date, remove the record from ACTUAL_NODE
 
 //V1.1:
 //support in-modeler update so that it is less often required to reopen the repo
@@ -39,10 +38,11 @@ var lastInfoMsg;
 
 function main() {
 	var yargs = require('yargs')
-		.usage("mxgit: utility that aids versioning Mendix projects in git repositories\n" +
+		.usage("mxgit: Small tool that helps versioning Mendix projects with git\n" +
 			"See https://github.com/mweststrate/mxgit for the full documentation\n" +
 			"Copyright by Michel Weststrate<mweststrate@gmail.com> 2014. MIT Licensed\n" +
-			"\nBasic usage: 'mxgit -> creates or updates a local SVN working copy with the HEAD state of the git repo in this directory.")
+			"\nBasic usage: 'mxgit -> creates or updates a local SVN working copy with the HEAD state of the git repo in this directory." +
+			"\nBasic usage: 'mxgit --install -> makes sure that mxgit is run automatically after every git command")
 		.describe('install', 'Creates git hooks so that the mxgit çommand no longer needs to be invoked manually. ')
 		.describe('reset', 'Removes the local SVN working copy and git hooks.')
 		.describe('setprojectid', '<projectid> Sets the Mendix projectid. Use this if you want story and cloud integration in the Mendix Business Modeler')
@@ -91,7 +91,7 @@ function interpretParams(params, callback) {
 	else if (params.setprojectid) {
 		updateSprintrProjectId(params.setprojectid, callback);
 	}
-	else if (params.install) { //todo: rename to init?
+	else if (params.install) {
 		seq([
 			initializeGitIgnore,
 			installGitHooks,
@@ -121,7 +121,7 @@ function installGitHooks(callback) {
 		if (fs.existsSync(filename))
 			console.warn("The git hook '" + filename + "' already exists! Skipping.");
 		else {
-			fs.writeFileSync(filename, "#!/bin/sh\necho 'git -> mxgit: running hook " + name + "'\nexec mxgit --" + command, FILE_OPTS);
+			fs.writeFileSync(filename, "#!/bin/sh\n#mxgit-marker-hook\necho 'git -> mxgit: running hook " + name + "'\nexec mxgit --" + command, FILE_OPTS);
 			if (process.platform != 'win32')
 				fs.chmodSync(filename, "+x") ;
 		}
@@ -172,16 +172,22 @@ function installMergeDriver(callback) {
 function reset(callback) {
 	info("resetting. Removing all traces of mxgit...");
 
-	//TODO: check whether these are our hooks!
-	[
-		MENDIX_CACHE,
-		".svn",
+	//check which hooks are ours
+	var toRemove = [
 		".git/hooks/pre-commit",
 		".git/hooks/post-update",
 		".git/hooks/post-commit",
 		".git/hooks/post-checkout",
 		".git/hooks/post-merge"
-	].map(function(thing) {
+	].filter(function(hook) {
+		return fs.existsSync(hook) && fs.readFileSync(hook, FILE_OPTS).indexOf("#mxgit-marker-hook") != -1;
+	});
+
+	//remove SVN related dirs
+	toRemove.concat([
+		MENDIX_CACHE,
+		".svn"
+	]).map(function(thing) {
 		fs.removeSync(thing);
 	});
 
@@ -232,14 +238,6 @@ function checkGitDir() {
 }
 
 function initializeGitIgnore(callback) {
-	/* Patterns which are specific to a particular repository but which
-	do not need to be shared with other related repositories (e.g., auxiliary
-	files that live inside the repository but are specific to one user’s workflow)
-	should go into the $GIT_DIR/info/exclude file.
-	https://www.kernel.org/pub/software/scm/git/docs/gitignore.html */
-
-	//TODO: use info/exclude instead of .gitignore?
-
 	debug("updating .gitignore file");
 	updateConfigFile(".gitignore", [
 		"/.svn",
@@ -362,7 +360,6 @@ function getMprMendixVersion(callback) {
 function updateBase(callback) {
 	debug("updating base data");
 
-	//TODO: if file status is not modified, remove changed status from svn
 	using([
 			findLatestMprHash,
 			getMprMendixVersion

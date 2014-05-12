@@ -57,11 +57,10 @@ Be chatty about all the things
 
 # Known Issues
 
+* --setprojectid can be only once. Use --reset first to assign a new project id.
+* --install will not register git hooks if similar git hooks already exists. Please fix this manually by either calling `mxgit --precommit` or `mxgit --postupdate`
 * SVN revert reverts to the wrong file
 * SVN icons, status, history etc .. doesn't make any sense
-* --setprojectid can be only once. Use --reset first to assign a new project id.
-* --reset might remove git hooks not created by this script
-* --install will fail if similar git hooks are already available
 * The modeler will always indicate that at least the project file is changed. This usually isn't the case. Check `git status` to be sure.
 
 # License
