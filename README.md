@@ -2,23 +2,30 @@ Welcome to MXGIT
 =====
 DISCLAIMER: DO NOT USE SVN OR SVN RELATED TOOLS (SUCH AS THE MODELER BUILT-IN FUNCTIONS FOR UPDATE, COMMIT, BRANCH, MERGE, HISTORY) ON REPOSITORIES MANAGED BY GIT + MXGIT DIRECTLY.
 
-mxgit is small utlity that makes working with git in mendix projects a breeze. It simulates an Teamserver / SVN repository so that the modeler can properly detect changes and conflicts, in the same way as when working on normal repositories. The tool should work under both windows and linux (this useful when operating on disks mounted in windows VM's).
+Mxgit: Small tool that helps versioning Mendix projects with git.
 
 The following features of the Mendix Business Modeler will work on git repositories when using mxgit:
 * Track changes, see changed documents
-* Rever documents inside the Mendix Business Modeler
+* Revert documents inside the Mendix Business Modeler
 * Investigate and solve merge conflicts
-* Note that after updating or committing the git repository, the model usually needs to be reopened to update the current state in the modeler.
+
+Mxgit integrates nicely in the git workflow, and should be picked up by git or any other git managing tool nicely if `mxgit --install` is run inside a repository. Mxgit runs on both windows and linux.
+
+Mxgit simulates an Teamserver / SVN repository which is recognized by the Mendix Business Modeler, so that it can properly detect changes and conflicts, in the same way as when working on normal Teamserver repositories. The simulated SVN repository is recognized by the Mendix Business Modeler, TortoiseSVN and svn commandline. But, since this is not a real repository normal SVN will not work and should not be used. Mxgit works with SVN 1.7, so it should compatible with all known versions of Mendix 4 and Mendix 5.
 
 # Installation
 
-The tool can be installed by using `npm`: `npm install -g mxgit`.
+## Prerequisites
 
-If you don't have nmp / node installed on your machine, obtain it at (nodejs.org)[https://nodejs.org] or from your package manager.
+### Windows
+You need to have nodejs and npm install. It can be downloaded from [nodejs.org](https://nodejs.org).
 
-When using the tool under linux, `sqlite3` is a required dependency as well. (on Debian distro's, just `sudo apt-get install sqlite3`).
+### Linux
+You need to have nodejs, npm and sqlite3 installed. On debian based systems you can install those packages by running `sudo apt-get install nodejs npm sqlite3`.
 
-mxgit works with SVN 1.7, so it should compatible with all known versions of Mendix 4 and Mendix 5.
+## Installation
+
+Just run `npm install -g mxgit`. You might need to run the command as administrator.
 
 # Getting started
 
@@ -26,14 +33,14 @@ You can run this tool by executing `mxgit` in any directory that contains an .mp
 
 When `mxgit` is being run, it checks the current status of the git repository and copies it to the 'svn' status in such a way that the modeler will pick it up. This means that the tool will automatically set up the correct base revisions and conflict data if applicable. Usually, after running mxgit the model should be reopened in the modeler to make sure that the new state is picked up.
 
-If you don't want to run `mxgit` manually when updating or commiting to this git repository, use `mxgit --install` to set up git hooks.
+If you don't want to run `mxgit` manually when updating or committing to this git repository, use `mxgit --install` to set up git hooks.
 
 
 # Options
 
 ## mxgit --install
 
-Registers git hooks so that the `mxgit` command doesn't need to be called manually after pull, merging, commiting etc.
+Registers git hooks so that the `mxgit` command doesn't need to be called manually after pull, merging, committing etc.
 
 ## mxgit --reset
 
@@ -57,6 +64,7 @@ Be chatty about all the things
 
 # Known Issues
 
+* SVN reset still works and resets the repo to dummy data.
 * --setprojectid can be only once. Use --reset first to assign a new project id.
 * --install will not register git hooks if similar git hooks already exists. Please fix this manually by either calling `mxgit --precommit` or `mxgit --postupdate`
 * SVN revert reverts to the wrong file
@@ -64,7 +72,7 @@ Be chatty about all the things
 * The modeler will always indicate that at least the project file is changed. This usually isn't the case. Check `git status` to be sure.
 
 # License
-This tool is unofficial and not supported by Mendix; use it at your own risk.but feel free to report any issues.
+This tool is unofficial and not supported by Mendix; use it at your own risk. Feel free to report any issues.
 
 Licensed under the MIT license
 

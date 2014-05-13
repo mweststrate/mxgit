@@ -8,9 +8,6 @@
 	© 2014, MIT Licensed
 */
 
-//todo: run npm publish
-//todo: test linux
-
 //V1.1:
 //support in-modeler update so that it is less often required to reopen the repo
 //see other known issues.
@@ -72,7 +69,7 @@ function main() {
 		partial(interpretParams, params)
 	], function(err) {
 		if (err) {
-			console.error(err);
+			console.log(err);
 			info("[ERROR] aborted.");
 			process.exit(1);
 		}
@@ -96,7 +93,8 @@ function interpretParams(params, callback) {
 		seq([
 			initializeGitIgnore,
 			installGitHooks,
-			installMergeDriver
+			installMergeDriver,
+			updateStatus
 		], callback);
 	}
 	else if (params.precommit) {
@@ -120,7 +118,7 @@ function installGitHooks(callback) {
 	function writeGitHook(name, command) {
 		var filename = ".git/hooks/" + name;
 		if (fs.existsSync(filename))
-			console.warn("The git hook '" + filename + "' already exists! Skipping.");
+			console.log("The git hook '" + filename + "' already exists! Skipping.");
 		else {
 			fs.writeFileSync(filename, "#!/bin/sh\n#mxgit-marker-hook\necho 'git -> mxgit: running hook " + name + "'\nexec mxgit --" + command, FILE_OPTS);
 			if (process.platform != 'win32')
@@ -212,6 +210,7 @@ function updateStatus(callback) {
 		makeAsync(checkMprLock),
 		initializeGitIgnore,
 		updateBase,
+		copyBaseToPristine,
 		when(isMprModified, function(cb) { cb(); }, markMprAsNotModified),
 		when(isMprConflicted, writeConflictData),
 		function(callback) {
@@ -233,7 +232,7 @@ function createCacheDir() {
 function checkGitDir() {
 	debug("checking git repository");
 	if (!fs.existsSync(".git")) {
-		console.error("[ERROR] Please run mxgit from a git directory");
+		console.log("[ERROR] Please run mxgit from a git directory");
 		process.exit(7);
 	}
 }
@@ -264,11 +263,11 @@ function checkMprLock() {
 	/* a lock file exists as long as the mpr is opened in a modeler (or if the modeler didn't exit cleanly */
 	if (fs.existsSync(mprName + ".lock")) {
 		if (ignoreMprLock) {
-			console.warn("[WARN] The file '" + mprName + "' is currently being edited in the Mendix Business Modeler.");
+			console.log("[WARN] The file '" + mprName + "' is currently being edited in the Mendix Business Modeler.");
 			requiresModelerReload = true;
 		}
 		else {
-			console.error("[ERROR] The file '" + mprName + "' is currently being edited in the Mendix Business Modeler. Please close the project (or remove the lock file)");
+			console.log("[ERROR] The file '" + mprName + "' is currently being edited in the Mendix Business Modeler. Please close the project (or remove the lock file)");
 			process.exit(9);
 		}
 	}
@@ -278,7 +277,7 @@ function checkMergeMarker() {
 	debug("checking merge marker");
 	/* merge marker exists if as soon as the modeler has picked up a merge conflict, and created a new mpr from that. It disappears as soon as the model has no conflicts anymore, to indicate that the conflict has been resolved (which should be communicated to git by using a git add command) */
 	if (fs.existsSync(MERGE_MARKER)) {
-		console.error("[ERROR] The file '" + mprName + "' is currently being merged by the Mendix Business Modeler. Please resolve any model conflicts first.");
+		console.log("[ERROR] The file '" + mprName + "' is currently being merged by the Mendix Business Modeler. Please resolve any model conflicts first.");
 		process.exit(10);
 	}
 }
@@ -286,13 +285,13 @@ function checkMergeMarker() {
 function checkSvnDir(callback) {
 	debug("checking svn repository");
 	/* svn dir shouldn't exists, or it should be our dummy repository */
-	if (fs.existsSync(".svn")) {
+	if (fs.existsSync(".svn/wc.db")) {
 		execSvnQuery("select root from REPOSITORY", function(err, results) {
 			assertNotError(err);
 			if (results[0].trim() == BOGUS_REPO)
 				callback();
 			else {
-				console.error("[ERROR] This repository is currently managed by SVN / Mendix Teamserver. Please remove the current .svn directory before managing the repo with (mx)git. Repo: " + results[0]);
+				console.log("[ERROR] This repository is currently managed by SVN / Mendix Teamserver. Please remove the current .svn directory before managing the repo with (mx)git. Repo: " + results[0]);
 				process.exit(8);
 			}
 		});
@@ -323,7 +322,7 @@ function updateSprintrProjectId(projectid, callback) {
 	info("updating project id to '" + projectid+ "'...");
 
 	if (!/^[a-zA-Z0-9-_]+$/.test(projectid)) {
-		console.error("[ERROR] '" + projectid + "' doesn't look like a valid project id");
+		console.log("[ERROR] '" + projectid + "' doesn't look like a valid project id");
 		process.exit(11);
 	}
 
@@ -346,7 +345,7 @@ function findMprFile() {
 		if (files[i].match(/\.mpr$/))
 			return files[i];
 
-	console.error("[ERROR] No .mpr file found in current working directory");
+	console.log("[ERROR] No .mpr file found in current working directory");
 	process.exit(2);
 }
 
@@ -395,11 +394,19 @@ function updateBase(callback) {
 	});
 }
 
+function copyBaseToPristine(callback) {
+	//Override the cached file for the mpr. This makes sure that if somebody accidentally
+	//executes an SVN revert, at least the proper base will be used.
+	//Note that we cannot simply break the revert function, since the modeler somehow internally depends on it.
+	fs.copySync(BASE_DATA, ".svn/pristine/19/190fc40c2d5f1f4ec60919d2db2be93a0053c48a.svn-base");
+	callback();
+}
+
 function findLatestMprHash(callback) {
 	debug("searching base version of " + mprName);
 	execGitCommand("ls-tree HEAD", function(err, treeFiles) {
 		if (err) {
-			console.warn("[WARN] failed to find git HEAD:  "+ err);
+			console.log("[WARN] failed to find git HEAD:  "+ err);
 			callback(null, null);
 			return;
 		}
