@@ -210,7 +210,6 @@ function updateStatus(callback) {
 		makeAsync(checkMprLock),
 		initializeGitIgnore,
 		updateBase,
-		copyBaseToPristine,
 		when(isMprModified, function(cb) { cb(); }, markMprAsNotModified),
 		when(isMprConflicted, writeConflictData),
 		function(callback) {
@@ -384,22 +383,27 @@ function updateBase(callback) {
 				if (latestHash === null) {
 					fs.copySync(mprName, BASE_DATA);
 					info("initialized new base version of " + mprName);
+					copyBaseToPristine();
 					callback();
 				}
 				else {
 					info("wrote new base version of " + mprName);
-					storeBlobToFile(latestHash, BASE_DATA, callback);
+					storeBlobToFile(latestHash, BASE_DATA, function(err) {
+						assertNotError(err);
+						copyBaseToPristine();
+						callback();
+					});
 				}
 			}
 	});
 }
 
-function copyBaseToPristine(callback) {
+function copyBaseToPristine() {
 	//Override the cached file for the mpr. This makes sure that if somebody accidentally
 	//executes an SVN revert, at least the proper base will be used.
 	//Note that we cannot simply break the revert function, since the modeler somehow internally depends on it.
+	debug("updating SVN cache..");
 	fs.copySync(BASE_DATA, ".svn/pristine/19/190fc40c2d5f1f4ec60919d2db2be93a0053c48a.svn-base");
-	callback();
 }
 
 function findLatestMprHash(callback) {
