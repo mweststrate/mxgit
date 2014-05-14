@@ -58,6 +58,10 @@ Command used internally by the git hooks. Checks whether the state of the curren
 
 Command used internally by the git hooks. Refreshes the base and conflict information of SVN, and should be called after any operation that might alter the current working copy. Basically the same as just running `mxgit`, except that some errors are ignored.
 
+## mxgit --merge base_mprfile left_mprfile right_mprfile
+
+Command used internally by the git merge driver but can be called manually as well. Prepares the modeler for a three-way merge. It takes three filenames as parameters; base file (a common ancestor), left file ('ours') and right file ('theirs').
+
 ## verbose flag (`-v`)
 
 Be chatty about all the things
