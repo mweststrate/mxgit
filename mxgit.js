@@ -69,13 +69,13 @@ function main() {
 		partial(interpretParams, params)
 	], function(err) {
 		if (err) {
-			console.log(err);
+			console.info(err);
 			info("[ERROR] aborted.");
 			process.exit(1);
 		}
 		else {
 			if (requiresModelerReload)
-				console.log("\n>>> PLEASE REOPEN THE MODEL IN THE MENDIX BUSINESS MODELER <<<\n");
+				console.info("\n>>> PLEASE REOPEN THE MODEL IN THE MENDIX BUSINESS MODELER <<<\n");
 			else
 				info("done.");
 		}
@@ -118,7 +118,7 @@ function installGitHooks(callback) {
 	function writeGitHook(name, command) {
 		var filename = ".git/hooks/" + name;
 		if (fs.existsSync(filename))
-			console.log("The git hook '" + filename + "' already exists! Skipping.");
+			console.info("The git hook '" + filename + "' already exists! Skipping.");
 		else {
 			fs.writeFileSync(filename, "#!/bin/sh\n#mxgit-marker-hook\necho 'git -> mxgit: running hook " + name + "'\nexec mxgit --" + command, FILE_OPTS);
 			if (process.platform != 'win32')
@@ -232,7 +232,7 @@ function createCacheDir() {
 function checkGitDir() {
 	debug("checking git repository");
 	if (!fs.existsSync(".git")) {
-		console.log("[ERROR] Please run mxgit from a git directory");
+		console.info("[ERROR] Please run mxgit from a git directory");
 		process.exit(7);
 	}
 }
@@ -263,11 +263,11 @@ function checkMprLock() {
 	/* a lock file exists as long as the mpr is opened in a modeler (or if the modeler didn't exit cleanly */
 	if (fs.existsSync(mprName + ".lock")) {
 		if (ignoreMprLock) {
-			console.log("[WARN] The file '" + mprName + "' is currently being edited in the Mendix Business Modeler.");
+			console.info("[WARN] The file '" + mprName + "' is currently being edited in the Mendix Business Modeler.");
 			requiresModelerReload = true;
 		}
 		else {
-			console.log("[ERROR] The file '" + mprName + "' is currently being edited in the Mendix Business Modeler. Please close the project (or remove the lock file)");
+			console.info("[ERROR] The file '" + mprName + "' is currently being edited in the Mendix Business Modeler. Please close the project (or remove the lock file)");
 			process.exit(9);
 		}
 	}
@@ -277,7 +277,7 @@ function checkMergeMarker() {
 	debug("checking merge marker");
 	/* merge marker exists if as soon as the modeler has picked up a merge conflict, and created a new mpr from that. It disappears as soon as the model has no conflicts anymore, to indicate that the conflict has been resolved (which should be communicated to git by using a git add command) */
 	if (fs.existsSync(MERGE_MARKER)) {
-		console.log("[ERROR] The file '" + mprName + "' is currently being merged by the Mendix Business Modeler. Please resolve any model conflicts first.");
+		console.info("[ERROR] The file '" + mprName + "' is currently being merged by the Mendix Business Modeler. Please resolve any model conflicts first.");
 		process.exit(10);
 	}
 }
@@ -291,7 +291,7 @@ function checkSvnDir(callback) {
 			if (results[0].trim() == BOGUS_REPO)
 				callback();
 			else {
-				console.log("[ERROR] This repository is currently managed by SVN / Mendix Teamserver. Please remove the current .svn directory before managing the repo with (mx)git. Repo: " + results[0]);
+				console.info("[ERROR] This repository is currently managed by SVN / Mendix Teamserver. Please remove the current .svn directory before managing the repo with (mx)git. Repo: " + results[0]);
 				process.exit(8);
 			}
 		});
@@ -322,7 +322,7 @@ function updateSprintrProjectId(projectid, callback) {
 	info("updating project id to '" + projectid+ "'...");
 
 	if (!/^[a-zA-Z0-9-_]+$/.test(projectid)) {
-		console.log("[ERROR] '" + projectid + "' doesn't look like a valid project id");
+		console.info("[ERROR] '" + projectid + "' doesn't look like a valid project id");
 		process.exit(11);
 	}
 
@@ -345,7 +345,7 @@ function findMprFile() {
 		if (files[i].match(/\.mpr$/))
 			return files[i];
 
-	console.log("[ERROR] No .mpr file found in current working directory");
+	console.info("[ERROR] No .mpr file found in current working directory");
 	process.exit(2);
 }
 
@@ -406,7 +406,7 @@ function findLatestMprHash(callback) {
 	debug("searching base version of " + mprName);
 	execGitCommand("ls-tree HEAD", function(err, treeFiles) {
 		if (err) {
-			console.log("[WARN] failed to find git HEAD:  "+ err);
+			console.info("[WARN] failed to find git HEAD:  "+ err);
 			callback(null, null);
 			return;
 		}
@@ -450,10 +450,10 @@ function getGitFileStatus(callback) {
 }
 
 function showMergeMessage() {
-	console.log("");
-	console.log(">>> MERGE CONFLICT DETECTED. PLEASE SOLVE THE CONFLICTS IN THE MODELER <<<");
-	console.log(">>> TO MARK RESOLVED, USE 'git add " + mprName +"' <<<");
-	console.log("");
+	console.info("");
+	console.info(">>> MERGE CONFLICT DETECTED. PLEASE SOLVE THE CONFLICTS IN THE MODELER <<<");
+	console.info(">>> TO MARK RESOLVED, USE 'git add " + mprName +"' <<<");
+	console.info("");
 
 }
 
@@ -574,16 +574,16 @@ function escapeRegExp(str) {
 
 function info(msg) {
 	lastInfoMsg = msg;
-	console.log("mxgit: " + msg);
+	console.info("mxgit: " + msg);
 }
 
 function done() {
-	console.log("mxgit: " + lastInfoMsg + " DONE");
+	console.info("mxgit: " + lastInfoMsg + " DONE");
 }
 
 function debug(msg) {
 	if (verbose)
-		console.log("\t* " + msg);
+		console.info("\t* " + msg);
 }
 
 if ((typeof (module) !== "undefined" && !module.parent))
