@@ -46,7 +46,7 @@ function main() {
 		.describe('setprojectid', '<projectid> Sets the Mendix projectid. Use this if you want story and cloud integration in the Mendix Business Modeler')
 		.describe('precommit', 'Determines whether the Mendix model can be commit safely')
 		.describe('postupdate', 'Same as no arguments, but ignores the model lock')
-		.describe('merge', 'Used internally as git driver. Takes temporarily files as argument: <base> <mine> <theirs>')
+		.describe('merge', 'Prepares the modeler for a three way merged. Takes three (temporarily) files as argument: <base> <mine> <theirs>. Used by the git merge driver.')
 		.describe('v', 'Verbose')
 		.describe('help', 'Prints this help')
 		.boolean(["install", "reset", "precommit", "postcommit", "v", "help", "merge"])
