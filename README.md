@@ -3,6 +3,7 @@ Welcome to MXGIT
 DISCLAIMER: DO NOT USE SVN OR SVN RELATED TOOLS (SUCH AS THE MODELER BUILT-IN FUNCTIONS FOR UPDATE, COMMIT, BRANCH, MERGE, HISTORY) ON REPOSITORIES MANAGED BY GIT + MXGIT DIRECTLY.
 
 Mxgit: Small tool that helps versioning Mendix projects with git.
+NPM page: [https://www.npmjs.org/package/mxgit](https://www.npmjs.org/package/mxgit)
 
 The following features of the Mendix Business Modeler will work on git repositories when using mxgit:
 * Track changes, see changed documents
