@@ -1,7 +1,5 @@
 Welcome to MXGIT
 =====
-DISCLAIMER: DO NOT USE SVN OR SVN RELATED TOOLS (SUCH AS THE MODELER BUILT-IN FUNCTIONS FOR UPDATE, COMMIT, BRANCH, MERGE, HISTORY) ON REPOSITORIES MANAGED BY GIT + MXGIT DIRECTLY.
-
 Mxgit: Small tool that helps versioning Mendix projects with git.
 
 The following features of the Mendix Business Modeler will work on git repositories when using mxgit:
@@ -12,6 +10,13 @@ The following features of the Mendix Business Modeler will work on git repositor
 Mxgit integrates nicely in the git workflow, and should be picked up by git or any other git managing tool nicely if `mxgit --install` is run inside a repository. Mxgit runs on both windows and linux.
 
 Mxgit simulates an Teamserver / SVN repository which is recognized by the Mendix Business Modeler, so that it can properly detect changes and conflicts, in the same way as when working on normal Teamserver repositories. The simulated SVN repository is recognized by the Mendix Business Modeler, TortoiseSVN and svn commandline. But, since this is not a real repository normal SVN will not work and should not be used. Mxgit works with SVN 1.7, so it should compatible with all known versions of Mendix 4 and Mendix 5.
+
+The following function of the Modeler will **not work** from *within* the Modeler (but will work with git commands):
+* Updating and committing
+* Branching & merging
+* History
+* Adding and reverting non mpr files
+* Sandbox deployments and initiating builds in the build server will not work at all.
 
 # Installation
 
@@ -35,6 +40,7 @@ When `mxgit` is being run, it checks the current status of the git repository an
 
 If you don't want to run `mxgit` manually when updating or committing to this git repository, use `mxgit --install` to set up git hooks.
 
+NOTE: DO NOT USE SVN OR SVN RELATED TOOLS (SUCH AS THE MODELER BUILT-IN FUNCTIONS FOR UPDATE, COMMIT, BRANCH, MERGE, HISTORY) ON REPOSITORIES MANAGED BY GIT + MXGIT DIRECTLY, THEY WON'T WORK
 
 # Options
 
