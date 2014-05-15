@@ -303,7 +303,7 @@ function initializeSvnDir(callback) {
 	if (!fs.existsSync(".svn")) {
 		info("initializing SVN dummy repository...");
 		/* the dummy repository is there to trick the modeler into thinking this project is properly versioned. We need to alter the actual db though to use the correct name of the mpr file, which might differ per project */
-		fs.copySync(__dirname + "/dummysvn/.svn", process.cwd() + "/.svn");
+		fs.copySync(__dirname + "/dummysvn/", process.cwd() + "/.svn");
 		execSvnQuery(
 			"update NODES set local_relpath = '" + mprName + "' where local_relpath = 'GitBasedTeamserverRepo.mpr'",
 			function(err) {
