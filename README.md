@@ -34,11 +34,13 @@ Just run `npm install -g mxgit`. You might need to run the command as administra
 
 # Getting started
 
+*TL;DR*: Run `mxgit --install` in the root your git working copy (which should also be the root of your Mendix project directory).
+
 You can run this tool by executing `mxgit` in any directory that contains an .mpr file and is not managed yet by a teamserver repository. (You can easily detach the working copy by removing the .svn directory or using the export function in (tortoise)SVN). The directory needs to be under git control already. Use `git init` to initialize a new git repository if needed.
 
 When `mxgit` is being run, it checks the current status of the git repository and copies it to the 'svn' status in such a way that the modeler will pick it up. This means that the tool will automatically set up the correct base revisions and conflict data if applicable. Usually, after running mxgit the model should be reopened in the modeler to make sure that the new state is picked up.
 
-If you don't want to run `mxgit` manually when updating or committing to this git repository, use `mxgit --install` to set up git hooks.
+If you don't want to run `mxgit` manually when updating or committing to this git repository, use `mxgit --install` to set up git hooks. Note that the project should be closed when executing git commands like commit, merge, pull or checkout, so that the internal state of the Business Modeler doesn't get outdated. mxgit will warn if a project should be closed first.
 
 NOTE: DO NOT USE SVN OR SVN RELATED TOOLS (SUCH AS THE MODELER BUILT-IN FUNCTIONS FOR UPDATE, COMMIT, BRANCH, MERGE, HISTORY) ON REPOSITORIES MANAGED BY GIT + MXGIT DIRECTLY, THEY WON'T WORK
 
