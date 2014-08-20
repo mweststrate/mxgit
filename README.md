@@ -1,6 +1,7 @@
 Welcome to MXGIT
 =====
 Mxgit: Small tool that helps versioning Mendix projects with git.
+NPM page: [https://www.npmjs.org/package/mxgit](https://www.npmjs.org/package/mxgit)
 
 The following features of the Mendix Business Modeler will work on git repositories when using mxgit:
 * Track changes, see changed documents
