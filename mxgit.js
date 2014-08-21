@@ -32,6 +32,7 @@ var mprName = findMprFile();
 var requiresModelerReload = false;
 var ignoreMprLock = false;
 var verbose = false;
+var superverbose = false;
 var lastInfoMsg;
 
 function main() {
@@ -48,8 +49,9 @@ function main() {
 		.describe('postupdate', 'Same as no arguments, but ignores the model lock')
 		.describe('merge', 'Prepares the modeler for a three way merged. Takes three (temporarily) files as argument: <base> <mine> <theirs>. Used by the git merge driver.')
 		.describe('v', 'Verbose')
+		.describe('debug', 'Extremely verbose')
 		.describe('help', 'Prints this help')
-		.boolean(["install", "reset", "precommit", "postcommit", "v", "help", "merge"])
+		.boolean(["install", "reset", "precommit", "postcommit", "v", "debug", "help", "merge"])
 		.string(["setprojectid"]);
 
 	var params = yargs.argv;
@@ -57,9 +59,10 @@ function main() {
 		yargs.showHelp();
 		process.exit(0);
 	}
-	verbose = params.v;
 
-	info("using " + mprName);
+	superverbose = params.debug;
+	verbose = superverbose || params.v;
+
 
 	seq([
 		makeAsync(checkGitDir),
@@ -619,12 +622,19 @@ function execGitCommand(command, callback) {
 }
 
 function execCommand(command, callback) {
+	if (superverbose)
+		console.info("\t\t\t > " + command);
+	
 	child_process.exec(command, function(error, stdout) {
 		if (error) {
 			callback(error);
 		}
-		else
+		else {
+			if (superverbose)
+				console.info("\t\t\t < " + stdout);
+
 			callback(null, stdout.split(/\r?\n/));
+		}
 	});
 }
 

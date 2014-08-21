@@ -73,7 +73,7 @@ Command used internally by the git merge driver but can be called manually as we
 
 ## verbose flag (`-v`)
 
-Be chatty about all the things
+Be chatty about all the things. Use `--debug` to make everything even more chatty. 
 
 # Known Issues
 
