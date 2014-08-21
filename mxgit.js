@@ -15,9 +15,22 @@
 /* dependencies */
 var fs = require('fs-extra'); //https://github.com/jprichardson/node-fs-extra
 var child_process = require('child_process');
+var path = require('path');
 
-/* constants */
-var MENDIX_CACHE = '.mendix-cache/';
+
+/* state */
+var mprName = path.relative(process.cwd(), findMprFile());
+var requiresModelerReload = false;
+var ignoreMprLock = false;
+var verbose = false;
+var superverbose = false;
+var lastInfoMsg;
+
+var mprBasePath = path.dirname(mprName);
+if (mprBasePath.length > 0)
+	mprBasePath += path.sep;
+
+var MENDIX_CACHE =  mprBasePath + '.mendix-cache/';
 var BASE_DATA = MENDIX_CACHE + 'base_data';
 var BASE_REV = MENDIX_CACHE + 'base_rev';
 var BASE_REV_GIT = MENDIX_CACHE + 'base_rev_git';
@@ -25,15 +38,7 @@ var BASE_VER = MENDIX_CACHE + 'base_ver';
 var FILE_OPTS = { encoding : 'utf-8' };
 
 var BOGUS_REPO = "https://teamserver.sprintr.com/this_is_not_a_svn_repo_use_git/trunk";
-var MERGE_MARKER = "modeler-merge-marker";
-
-/* state */
-var mprName = findMprFile();
-var requiresModelerReload = false;
-var ignoreMprLock = false;
-var verbose = false;
-var superverbose = false;
-var lastInfoMsg;
+var MERGE_MARKER = mprBasePath + "modeler-merge-marker";
 
 function main() {
 	var yargs = require('yargs')
@@ -63,6 +68,7 @@ function main() {
 	superverbose = params.debug;
 	verbose = superverbose || params.v;
 
+	info("using " + mprName + " (project dir: " + mprBasePath + ")");
 
 	seq([
 		makeAsync(checkGitDir),
@@ -188,7 +194,7 @@ function reset(callback) {
 	//remove SVN related dirs
 	toRemove.concat([
 		MENDIX_CACHE,
-		".svn"
+		mprBasePath + ".svn"
 	]).map(function(thing) {
 		fs.removeSync(thing);
 	});
@@ -242,20 +248,20 @@ function checkGitDir() {
 function initializeGitIgnore(callback) {
 	debug("updating .gitignore file");
 	updateConfigFile(".gitignore", [
-		"/.svn",
-		"/modeler-merge-marker",
-		"/.mendix-cache",
-		"/*.mpr.lock",
-		"/*.mpr.bak",
-		"/*.mpr.left*",
-		"/*.mpr.right*",
-		"/.settings",
-		"/deployment",
-		"/releases",
+		mprBasePath + ".svn",
+		mprBasePath + "modeler-merge-marker",
+		mprBasePath + ".mendix-cache",
+		mprBasePath + "*.mpr.lock",
+		mprBasePath + "*.mpr.bak",
+		mprBasePath + "*.mpr.left*",
+		mprBasePath + "*.mpr.right*",
+		mprBasePath + ".settings",
+		mprBasePath + "deployment",
+		mprBasePath + "releases",
 		"proxies",
-		"/*.launch",
-		"/.classpath",
-		"/.project",
+		"*.launch",
+		".classpath",
+		".project",
 	]);
 	callback();
 }
@@ -287,7 +293,7 @@ function checkMergeMarker() {
 function checkSvnDir(callback) {
 	debug("checking svn repository");
 	/* svn dir shouldn't exists, or it should be our dummy repository */
-	if (fs.existsSync(".svn/wc.db")) {
+	if (fs.existsSync(mprBasePath + ".svn/wc.db")) {
 		execSvnQuery("select root from REPOSITORY", function(err, results) {
 			assertNotError(err);
 			if (results[0].trim() == BOGUS_REPO)
@@ -303,12 +309,12 @@ function checkSvnDir(callback) {
 }
 
 function initializeSvnDir(callback) {
-	if (!fs.existsSync(".svn")) {
+	if (!fs.existsSync(mprBasePath + ".svn")) {
 		info("initializing SVN dummy repository...");
 		/* the dummy repository is there to trick the modeler into thinking this project is properly versioned. We need to alter the actual db though to use the correct name of the mpr file, which might differ per project */
-		fs.copySync(__dirname + "/dummysvn/", process.cwd() + "/.svn");
+		fs.copySync(__dirname + "/dummysvn/", mprBasePath + ".svn");
 		execSvnQuery(
-			"update NODES set local_relpath = '" + mprName + "' where local_relpath = 'GitBasedTeamserverRepo.mpr'",
+			"update NODES set local_relpath = '" + path.basename(mprName) + "' where local_relpath = 'GitBasedTeamserverRepo.mpr'",
 			function(err) {
 				assertNotError(err);
 				done();
@@ -342,13 +348,28 @@ function updateSprintrProjectId(projectid, callback) {
 }
 
 function findMprFile() {
-	var files = fs.readdirSync(process.cwd());
-	for(var i = 0; i < files.length; i++)
-		if (files[i].match(/\.mpr$/))
-			return files[i];
+	var file = findMprFileHelper(process.cwd());
+	if (file == null) {
+		console.info("[ERROR] No .mpr file found in current working directory");
+		process.exit(2);
+	}
+	else
+		return file;
+}
 
-	console.info("[ERROR] No .mpr file found in current working directory");
-	process.exit(2);
+function findMprFileHelper(dir) {
+	var files = fs.readdirSync(dir);
+	for(var i = 0; i < files.length; i++) {
+		var file = dir + path.sep + files[i];
+		if (fs.lstatSync(file).isDirectory()) {
+			var subresult = findMprFileHelper(file);
+			if (subresult != null)
+				return subresult;
+		}
+		else if (file.match(/\.mpr$/))
+			return file;
+	}
+	return null;
 }
 
 function getMprMendixVersion(callback) {
@@ -406,7 +427,7 @@ function copyBaseToPristine() {
 	//executes an SVN revert, at least the proper base will be used.
 	//Note that we cannot simply break the revert function, since the modeler somehow internally depends on it.
 	debug("updating SVN cache..");
-	fs.copySync(BASE_DATA, ".svn/pristine/19/190fc40c2d5f1f4ec60919d2db2be93a0053c48a.svn-base");
+	fs.copySync(BASE_DATA, mprBasePath + ".svn/pristine/19/190fc40c2d5f1f4ec60919d2db2be93a0053c48a.svn-base");
 }
 
 function findLatestMprHash(callback) {
@@ -467,12 +488,12 @@ function showMergeMessage() {
 function markMprAsConflicted(callback) {
 	seq([
 		markMprAsNotModified,
-		partial(execSvnQuery, "insert into ACTUAL_NODE (wc_id, local_relpath, conflict_old, conflict_new) values (1,'"+ mprName +"','"+ mprName +".left','"+ mprName +".right')")
+		partial(execSvnQuery, "insert into ACTUAL_NODE (wc_id, local_relpath, conflict_old, conflict_new) values (1,'"+ path.basename(mprName) +"','"+ path.basename(mprName) +".left','"+ path.basename(mprName) +".right')")
 	], callback);
 }
 
 function markMprAsNotModified(callback) {
-	execSvnQuery("delete from ACTUAL_NODE where local_relpath = '" + mprName + "'", callback);
+	execSvnQuery("delete from ACTUAL_NODE where local_relpath = '" + path.basename(mprName) + "'", callback);
 }
 
 function gitMergeDrive(fileArray) {
@@ -603,7 +624,7 @@ if ((typeof (module) !== "undefined" && !module.parent))
  */
 
 function execSvnQuery(query, callback) {
-	execSqliteQuery(".svn/wc.db", query, callback);
+	execSqliteQuery(mprBasePath + ".svn/wc.db", query, callback);
 }
 
 function execMprQuery(query, callback) {

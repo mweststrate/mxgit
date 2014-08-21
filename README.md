@@ -35,9 +35,9 @@ Just run `npm install -g mxgit`. You might need to run the command as administra
 
 # Getting started
 
-*TL;DR*: Run `mxgit --install` in the root your git working copy (which should also be the root of your Mendix project directory).
+*TL;DR*: Run `mxgit --install` in the root of your *git* checkout. This is not necessarly the directory of your Mendix project file, as `mxgit` will scan the git repository recursively for the proper .mpr file (there should only be one).
 
-You can run this tool by executing `mxgit` in any directory that contains an .mpr file and is not managed yet by a teamserver repository. (You can easily detach the working copy by removing the .svn directory or using the export function in (tortoise)SVN). The directory needs to be under git control already. Use `git init` to initialize a new git repository if needed.
+You can run this tool by executing `mxgit` in any directory that contains exactly one Mendix project which is not managed yet by a teamserver repository. (You can easily detach the working copy by removing the .svn directory or using the export function in (tortoise)SVN). The directory should be under git control. Use `git init` to initialize a new git repository if needed. `mxgit` commands should always be run from the root of a git repository (which is not necessarily the root of the Mendix project).
 
 When `mxgit` is being run, it checks the current status of the git repository and copies it to the 'svn' status in such a way that the modeler will pick it up. This means that the tool will automatically set up the correct base revisions and conflict data if applicable. Usually, after running mxgit the model should be reopened in the modeler to make sure that the new state is picked up.
 
@@ -92,3 +92,16 @@ Licensed under the MIT license
 * git clone this repository
 * run `npm install` to download the dependencies
 * run `npm link` to put the current checkout of this tool on your path
+
+
+# Version history
+
+
+## 0.0.3
+
+* Fixed support of .mpr file names with spaces in it. 
+* The .mpr file is no longer required to be in the root of the repository.
+
+## 0.0.2
+
+* Initial release
