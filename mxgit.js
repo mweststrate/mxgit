@@ -348,28 +348,29 @@ function updateSprintrProjectId(projectid, callback) {
 }
 
 function findMprFile() {
-	var file = findMprFileHelper(process.cwd());
-	if (file == null) {
+	var files = [];
+	findMprFileHelper(process.cwd(), files);
+	if (files.length == 0) {
 		console.info("[ERROR] No .mpr file found in current working directory");
 		process.exit(2);
 	}
+	else if (files.length > 1) {
+		console.info("[ERROR] There should be exactly one .mpr file, but found: " + files.join(", "));
+		process.exit(2);
+	}
 	else
-		return file;
+		return files[0];
 }
 
-function findMprFileHelper(dir) {
+function findMprFileHelper(dir, results) {
 	var files = fs.readdirSync(dir);
 	for(var i = 0; i < files.length; i++) {
 		var file = dir + path.sep + files[i];
-		if (fs.lstatSync(file).isDirectory()) {
-			var subresult = findMprFileHelper(file);
-			if (subresult != null)
-				return subresult;
-		}
+		if (fs.lstatSync(file).isDirectory()) 
+			findMprFileHelper(file, results);
 		else if (file.match(/\.mpr$/))
-			return file;
+			results.push(file);
 	}
-	return null;
 }
 
 function getMprMendixVersion(callback) {
