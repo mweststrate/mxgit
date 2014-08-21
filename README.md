@@ -97,6 +97,11 @@ Licensed under the MIT license
 # Version history
 
 
+## 0.0.4
+
+* Fixed some windows compatibility issues
+* No longer automatically initialize .gitignore, but only on `--install`.
+
 ## 0.0.3
 
 * Fixed support of .mpr file names with spaces in it. 
