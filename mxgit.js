@@ -28,7 +28,7 @@ var lastInfoMsg;
 
 var mprBasePath = path.dirname(mprName);
 if (mprBasePath.length > 0)
-	mprBasePath += path.sep;
+	mprBasePath += "/";
 
 var MENDIX_CACHE =  mprBasePath + '.mendix-cache/';
 var BASE_DATA = MENDIX_CACHE + 'base_data';
@@ -365,7 +365,7 @@ function findMprFile() {
 function findMprFileHelper(dir, results) {
 	var files = fs.readdirSync(dir);
 	for(var i = 0; i < files.length; i++) {
-		var file = dir + path.sep + files[i];
+		var file = dir + "/" + files[i];
 		if (fs.lstatSync(file).isDirectory()) 
 			findMprFileHelper(file, results);
 		else if (file.match(/\.mpr$/))
@@ -466,7 +466,7 @@ function isMprConflicted(callback) {
 
 function getGitFileStatus(callback) {
 	debug("detecting file status");
-	execGitCommand("status --porcelain '" + mprName + "'", function(err, lines) {
+	execGitCommand("status --porcelain " + quoteFileName(mprName), function(err, lines) {
 		assertNotError(err);
 		if (lines.length) {
 			var status =  lines[0].charAt(1);
@@ -529,7 +529,7 @@ function writeConflictData(callback) {
 	conflict_old column in ACTUAL_NODE table: mpr.merge-left.r# (BASE), conflict_new column: mpr.merge-right.r# (THEIRS)
 	modeler-merge-marker appears as soon as the file is merged by the modeler, but still has conflicts. Disappears as soon as last conflict is resolved in the modeler. */
 
-	execGitCommand("ls-files -u '" + mprName + "'", function(err, mergestatus) {
+	execGitCommand("ls-files -u " + quoteFileName(mprName), function(err, mergestatus) {
 		assertNotError(err);
 		if (mergestatus.length < 3)
 			callback("mxgit: cannot handle the current conflict, please use an external tool");
@@ -625,7 +625,7 @@ if ((typeof (module) !== "undefined" && !module.parent))
  */
 
 function execSvnQuery(query, callback) {
-	execSqliteQuery(mprBasePath + ".svn/wc.db", query, callback);
+	execSqliteQuery(process.cwd() + path.sep + mprBasePath + ".svn/wc.db", query, callback);
 }
 
 function execMprQuery(query, callback) {
@@ -633,10 +633,10 @@ function execMprQuery(query, callback) {
 }
 
 function execSqliteQuery(file, query, callback) {
-	var sqlite = process.platform == 'win32' ? __dirname + "/sqlite3" : "sqlite3";
+	var sqlite = process.platform == 'win32' ? __dirname + "\\sqlite3" : "sqlite3";
 	query = query.replace(/[\\\"]/g, function(r) { return "\\" + r; });
 
-	execCommand([sqlite, "'" + file + "'", "\"" + query + "\""].join(" "), callback);
+	execCommand([sqlite, quoteFileName(file), "\"" + query + "\""].join(" "), callback);
 }
 
 function execGitCommand(command, callback) {
@@ -658,6 +658,10 @@ function execCommand(command, callback) {
 			callback(null, stdout.split(/\r?\n/));
 		}
 	});
+}
+
+function quoteFileName(filename) {
+	return process.platform == 'win32' ? "\"" + filename + "\"" : "'" + filename + "'";
 }
 
 
