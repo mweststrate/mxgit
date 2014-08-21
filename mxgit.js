@@ -217,7 +217,6 @@ function updateStatus(callback) {
 	seq([
 		makeAsync(checkMergeMarker),
 		makeAsync(checkMprLock),
-		initializeGitIgnore,
 		updateBase,
 		when(isMprModified, function(cb) { cb(); }, markMprAsNotModified),
 		when(isMprConflicted, writeConflictData),
