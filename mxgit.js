@@ -444,7 +444,7 @@ function isMprConflicted(callback) {
 
 function getGitFileStatus(callback) {
 	debug("detecting file status");
-	execGitCommand("status --porcelain " + mprName, function(err, lines) {
+	execGitCommand("status --porcelain '" + mprName + "'", function(err, lines) {
 		assertNotError(err);
 		if (lines.length) {
 			var status =  lines[0].charAt(1);
@@ -507,7 +507,7 @@ function writeConflictData(callback) {
 	conflict_old column in ACTUAL_NODE table: mpr.merge-left.r# (BASE), conflict_new column: mpr.merge-right.r# (THEIRS)
 	modeler-merge-marker appears as soon as the file is merged by the modeler, but still has conflicts. Disappears as soon as last conflict is resolved in the modeler. */
 
-	execGitCommand("ls-files -u " + mprName, function(err, mergestatus) {
+	execGitCommand("ls-files -u '" + mprName + "'", function(err, mergestatus) {
 		assertNotError(err);
 		if (mergestatus.length < 3)
 			callback("mxgit: cannot handle the current conflict, please use an external tool");
@@ -614,7 +614,7 @@ function execSqliteQuery(file, query, callback) {
 	var sqlite = process.platform == 'win32' ? __dirname + "/sqlite3" : "sqlite3";
 	query = query.replace(/[\\\"]/g, function(r) { return "\\" + r; });
 
-	execCommand([sqlite, file, "\"" + query + "\""].join(" "), callback);
+	execCommand([sqlite, "'" + file + "'", "\"" + query + "\""].join(" "), callback);
 }
 
 function execGitCommand(command, callback) {
