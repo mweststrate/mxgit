@@ -25,7 +25,7 @@
   },
   "homepage": "https://github.com/mweststrate/mxgit",
   "dependencies": {
-    "fs-extra": "^0.8.1",
+    "fs-extra": "^0.13.0",
     "yargs": "^1.2.1"
   }
 }
