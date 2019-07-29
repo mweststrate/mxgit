@@ -96,6 +96,13 @@ Licensed under the MIT license
 
 # Version history
 
+## 0.0.6
+
+* Upgrade fs-extra to be compatiable with Node.js 10.x. ([#5](https://github.com/mweststrate/mxgit/issues/5))
+
+## 0.0.5
+
+* Branch line of the SVN repo has been updated to 'GIT MANAGED REPOSITORY'. ([#3](https://github.com/mweststrate/mxgit/issues/3))
 
 ## 0.0.4
 

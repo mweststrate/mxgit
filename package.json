@@ -1,6 +1,6 @@
 {
   "name": "mxgit",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Small tool that helps versioning Mendix projects with git. ",
   "preferGlobal" : true,
   "main": "mxgit.js",
